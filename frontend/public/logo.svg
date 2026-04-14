@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="breathGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#0099ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#006ee6;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="white" stroke="url(#breathGradient)" stroke-width="2"/>
+  
+  <!-- Lung shape - left -->
+  <path d="M 60 80 Q 50 80 50 95 Q 50 125 65 135 Q 75 125 75 95 Q 75 80 60 80" fill="url(#breathGradient)" opacity="0.9" filter="url(#shadow)"/>
+  
+  <!-- Lung shape - right -->
+  <path d="M 140 80 Q 150 80 150 95 Q 150 125 135 135 Q 125 125 125 95 Q 125 80 140 80" fill="url(#breathGradient)" opacity="0.9" filter="url(#shadow)"/>
+  
+  <!-- Central breathing wave - top -->
+  <path d="M 70 70 Q 80 60 90 70 Q 100 80 110 70 Q 120 60 130 70" stroke="url(#breathGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  
+  <!-- Central breathing wave - middle -->
+  <path d="M 65 100 Q 80 90 100 100 Q 120 110 135 100" stroke="url(#breathGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  
+  <!-- Central breathing wave - bottom -->
+  <path d="M 70 130 Q 80 140 90 130 Q 100 120 110 130 Q 120 140 130 130" stroke="url(#breathGradient)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  
+  <!-- Center circle accent -->
+  <circle cx="100" cy="100" r="15" fill="none" stroke="url(#breathGradient)" stroke-width="2" opacity="0.6"/>
+  <circle cx="100" cy="100" r="6" fill="url(#breathGradient)"/>
+  
+  <!-- Text -->
+  <text x="100" y="165" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#006ee6">BREATHTRUTH</text>
+</svg>
