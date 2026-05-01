@@ -17,26 +17,23 @@ function extractAqi(record = {}) {
   return null;
 }
 
-async function fetchCpcbAqi(city) {
-  if (!city) return null;
+function normalizeCity(city) {
+  return String(city || '').trim().toLowerCase();
+}
 
-  const { data } = await axios.get(CPCB_API_URL, {
-    params: {
-      'api-key': CPCB_API_KEY,
-      format: 'json',
-      filters: `[city=${city}]`,
-      limit: 10
-    },
-    timeout: 8000
-  });
-
-  const records = Array.isArray(data?.records) ? data.records : [];
+function buildStations(records, city) {
+  const cityNorm = normalizeCity(city);
   const stations = records
-    .map((record) => ({
-      station: record.station || record.station_name || record.stn_name || record.city || city,
-      aqi: extractAqi(record)
-    }))
-    .filter((entry) => entry.aqi !== null);
+    .map((record) => {
+      const recordCity = normalizeCity(record.city || record.city_name || record.City);
+      return {
+        station: record.station || record.station_name || record.stn_name || record.city || city,
+        aqi: extractAqi(record),
+        recordCity
+      };
+    })
+    .filter((entry) => entry.aqi !== null)
+    .filter((entry) => !cityNorm || entry.recordCity === cityNorm);
 
   if (stations.length === 0) return null;
 
@@ -49,25 +46,44 @@ async function fetchCpcbAqi(city) {
   };
 }
 
-async function fetchWaqiFallback(city) {
+async function fetchCpcbAqi(city) {
   if (!city) return null;
 
-  const { data } = await axios.get(`https://api.waqi.info/feed/${encodeURIComponent(city)}/`, {
-    params: { token: 'demo' },
-    timeout: 8000
-  });
+  if (!CPCB_API_KEY) {
+    console.warn('CPCB_API_KEY missing. Official AQI cannot be fetched.');
+    return null;
+  }
 
-  if (data?.status !== 'ok') return null;
+  const attempts = [
+    { 'api-key': CPCB_API_KEY, format: 'json', limit: 100, 'filters[city]': city },
+    { 'api-key': CPCB_API_KEY, format: 'json', limit: 100, filters: `[city=${city}]` },
+    { 'api-key': CPCB_API_KEY, format: 'json', limit: 100, city }
+  ];
 
-  const aqi = toNumber(data?.data?.aqi);
-  if (aqi === null) return null;
+  for (const params of attempts) {
+    try {
+      const { data } = await axios.get(CPCB_API_URL, { params, timeout: 9000 });
+      const records = Array.isArray(data?.records) ? data.records : [];
+      const parsed = buildStations(records, city);
+      if (parsed) return parsed;
+    } catch (err) {
+      if (err.response?.status && err.response.status < 500) continue;
+      throw err;
+    }
+  }
 
-  return {
-    aqi,
-    source: 'WAQI demo',
-    station: data?.data?.city?.name || city,
-    stations: [{ station: data?.data?.city?.name || city, aqi }]
-  };
+  // Fallback: fetch unfiltered and filter locally by city.
+  try {
+    const { data } = await axios.get(CPCB_API_URL, {
+      params: { 'api-key': CPCB_API_KEY, format: 'json', limit: 500 },
+      timeout: 9000
+    });
+    const records = Array.isArray(data?.records) ? data.records : [];
+    return buildStations(records, city);
+  } catch (err) {
+    if (err.response?.status && err.response.status < 500) return null;
+    throw err;
+  }
 }
 
 async function fetchOfficialAqi(city) {
@@ -75,14 +91,7 @@ async function fetchOfficialAqi(city) {
     const cpcb = await fetchCpcbAqi(city);
     if (cpcb) return cpcb;
   } catch (err) {
-    console.warn('CPCB fetch failed, trying public fallback:', err.message);
-  }
-
-  try {
-    const fallback = await fetchWaqiFallback(city);
-    if (fallback) return fallback;
-  } catch (err) {
-    console.warn('Public AQI fallback failed:', err.message);
+    console.warn('CPCB fetch failed:', err.message);
   }
 
   return null;

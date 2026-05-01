@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 
 export function Login() {
-  const { login, theme, toggleTheme } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
@@ -26,37 +26,11 @@ export function Login() {
   };
 
   return (
-    <div className="auth-page auth-page--split">
-      <section className="auth-hero">
-        <div className="auth-hero__badge">BreathTruth</div>
-        <h1>Community air data, without the noise.</h1>
-        <p>
-          Log in to see your local AQI, compare it with official CPCB readings, and submit reports that help
-          everyone in your area make faster decisions.
-        </p>
-        <div className="auth-hero__stats">
-          <div>
-            <strong>Live</strong>
-            <span>community AQI trends</span>
-          </div>
-          <div>
-            <strong>Official</strong>
-            <span>CPCB comparison line</span>
-          </div>
-          <div>
-            <strong>Action</strong>
-            <span>reports, alerts, civic letters</span>
-          </div>
-        </div>
-      </section>
-
+    <div className="auth-page">
       <div className="auth-card auth-card--login">
-        <button type="button" className="btn-theme auth-theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-          {theme === 'light' ? '🌙 Dark theme' : '☀️ Light theme'}
-        </button>
         <img src="/logo.svg" alt="BreathTruth" className="auth-logo-img" />
-        <h2>Welcome back</h2>
-        <p className="auth-sub">Sign in to your community air quality account</p>
+        <h2>Login</h2>
+        <p className="auth-sub">Sign in to continue</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Email</label>
@@ -72,14 +46,15 @@ export function Login() {
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
-        <p className="auth-footer">Don't have an account? <Link to="/register">Sign up free</Link></p>
+        <div className="auth-divider"><span>New here?</span></div>
+        <Link to="/register" className="btn-outline btn-full">Create New Account</Link>
       </div>
     </div>
   );
 }
 
 export function Register() {
-  const { register, theme, toggleTheme } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', password: '', pincode: '', locality: '', city: 'Hyderabad' });
   const [loading, setLoading] = useState(false);
@@ -105,9 +80,6 @@ export function Register() {
   return (
     <div className="auth-page">
       <div className="auth-card auth-card--wide">
-        <button type="button" className="btn-theme auth-theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-          {theme === 'light' ? '🌙 Dark theme' : '☀️ Light theme'}
-        </button>
         <img src="/logo.svg" alt="BreathTruth" className="auth-logo-img" />
         <h2>Join the community</h2>
         <p className="auth-sub">Help map air quality in your area</p>

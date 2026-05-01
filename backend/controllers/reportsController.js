@@ -1,6 +1,7 @@
 const Report = require('../models/Report');
 const AqiAggregate = require('../models/AqiAggregate');
 const { recalculateAggregate } = require('../utils/aggregator');
+const { fetchOfficialAqi } = require('../utils/officialAqi');
 
 const COMPLAINT_WINDOW_DAYS = 7;
 const MIN_UNIQUE_REPORTERS = 11; // "more than 10" distinct accounts
@@ -67,6 +68,24 @@ exports.getWeeklyTrend = async (req, res) => {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const aggregates = await AqiAggregate.find({ pincode, date: { $gte: since } })
       .sort({ date: 1 });
+
+    // Backfill missing official AQI values so trend graph can always render government series.
+    for (const agg of aggregates) {
+      if (!agg.officialAqi && agg.city) {
+        const official = await fetchOfficialAqi(agg.city);
+        if (official?.aqi) {
+          agg.officialAqi = official.aqi;
+          agg.officialStation = official.station;
+          agg.officialDataFetched = true;
+          if (agg.communityAqi) {
+            agg.divergenceRatio = agg.communityAqi / official.aqi;
+            agg.anomalyFlagged = agg.divergenceRatio >= 2.0;
+          }
+          await agg.save();
+        }
+      }
+    }
+
     res.json({ trend: aggregates });
   } catch (err) {
     res.status(500).json({ message: 'Error fetching trend', error: err.message });
