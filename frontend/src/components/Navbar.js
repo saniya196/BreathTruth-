@@ -21,15 +21,15 @@ export default function Navbar() {
     } catch {}
   };
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const handleLogout = () => { logout(); navigate('/login'); };
   const isActive = (path) => location.pathname === path;
 
-  if (!user && location.pathname === '/') return null;
+  if (!user && ['/', '/login', '/register'].includes(location.pathname)) return null;
 
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <Link to={user ? '/dashboard' : '/'} className="brand-link">
+        <Link to={user ? '/dashboard' : '/login'} className="brand-link">
           <img src="/logo.svg" alt="BreathTruth" className="brand-logo" />
           <span className="brand-name">BreathTruth</span>
         </Link>

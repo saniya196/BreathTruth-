@@ -10,71 +10,37 @@
 
 ```
 breathtruth/
-├── .gitignore                # Git ignore rules (root level)
+├── package.json              # Root monorepo scripts + workspace orchestration
 ├── README.md                 # Project documentation
+├── .gitignore                # Global ignore rules
+├── docs/                     # Project guides and completion notes
+│   ├── CHECKLIST.md
+│   ├── COMPLETION_SUMMARY.md
+│   ├── FILES_CHANGED.md
+│   ├── FOLDER_STRUCTURE.md
+│   ├── OPTIMIZATIONS.md
+│   └── SETUP.md
 ├── backend/                  # Node.js + Express + MongoDB API
 │   ├── .env                  # Environment variables (DO NOT COMMIT)
 │   ├── .env.example          # Example environment variables
 │   ├── .gitignore            # Backend-specific git ignore
+│   ├── package.json          # Backend dependencies and dev scripts
 │   ├── server.js             # Express app entry point + cron jobs
-│   ├── package.json          # Backend dependencies
 │   ├── controllers/
-│   │   ├── authController.js       # JWT login/register logic
-│   │   ├── aqiController.js        # AQI data + CPCB API integration
-│   │   ├── reportsController.js    # Report submission & aggregation
-│   │   ├── civicController.js      # PDF complaint generation
-│   │   └── exportController.js     # CSV data export
-│   ├── models/
-│   │   ├── User.js                 # User schema + auth methods
-│   │   ├── Report.js               # Community AQI report schema
-│   │   ├── AqiAggregate.js         # Daily aggregated AQI data
-│   │   └── Alert.js                # Notification alert schema
 │   ├── middleware/
-│   │   └── auth.js                 # JWT authentication middleware
+│   ├── models/
 │   ├── routes/
-│   │   ├── auth.js                 # Auth endpoints
-│   │   ├── reports.js              # Report submission endpoints
-│   │   ├── aqi.js                  # AQI comparison endpoints
-│   │   ├── alerts.js               # Alert notification endpoints
-│   │   ├── map.js                  # Map data endpoints
-│   │   ├── export.js               # CSV export endpoints
-│   │   └── civic.js                # Civic action endpoints
 │   └── utils/
-│       ├── aggregator.js           # Confidence score calculation
-│       └── alertService.js         # Email & in-app alerts
-│
-└── frontend/                 # React.js SPA (Create React App)
+└── frontend/                 # React.js SPA
     ├── .env.example          # Example environment variables
     ├── .gitignore            # Frontend-specific git ignore
-    ├── package.json          # Frontend dependencies
+    ├── package.json          # Frontend dependencies and scripts
     ├── public/
-    │   ├── index.html        # Main HTML template
-    │   ├── logo.svg          # Professional BreathTruth logo
-    │   └── logoicon.svg      # Logo icon (favicon)
     └── src/
-        ├── App.js                 # Main App component + routing
-        ├── index.js               # React app entry point
-        ├── index.css              # Global styles + design system
-        ├── context/
-        │   └── AuthContext.js      # Global auth state + JWT management
         ├── components/
-        │   ├── Navbar.js          # Navigation with logo
-        │   └── Dashboard/
-        │       └── AqiCard.js      # AQI visual cards
+        ├── context/
         ├── pages/
-        │   ├── Auth.js            # Login/Register/Settings forms
-        │   ├── Dashboard.js       # User dashboard
-        │   ├── Landing.js         # Landing page
-        │   ├── SubmitReport.js    # AQI report submission
-        │   ├── MapView.js         # Interactive map
-        │   ├── Trends.js          # AQI trend analysis
-        │   ├── Alerts.js          # Notification center
-        │   ├── CivicAction.js     # Complaint letter generation
-        │   ├── Settings.js        # User settings (exported from Auth.js)
-        │   ├── PublicDashboard.js # Public AQI dashboard
-        │   └── [Other Pages]
         └── utils/
-            └── aqiHelpers.js      # AQI utility functions
 ```
 
 ## 🚀 Getting Started
@@ -123,6 +89,18 @@ npm start
 ```
 
 **Frontend Server**: http://localhost:3000
+
+### Root Workspace Commands
+
+From the project root you can run:
+
+```bash
+npm install
+npm run dev
+npm run build
+```
+
+The root `package.json` ties the frontend and backend together so the repo behaves like a single professional workspace.
 
 ## 📦 API Endpoints
 

@@ -1,0 +1,22 @@
+{
+  "name": "breathtruth",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend",
+    "start:backend": "npm run start --workspace backend",
+    "start:frontend": "npm run start --workspace frontend",
+    "install:all": "npm install --workspaces",
+    "clean": "powershell -NoProfile -Command \"Remove-Item -Recurse -Force frontend/build, frontend/node_modules, backend/node_modules -ErrorAction SilentlyContinue\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

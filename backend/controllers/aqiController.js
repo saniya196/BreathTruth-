@@ -1,26 +1,29 @@
 const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
+const { fetchOfficialAqi } = require('../utils/officialAqi');
 
 // Fetch official AQI from CPCB API
 exports.getOfficialAqi = async (req, res) => {
   try {
     const { city } = req.query;
-    // Real CPCB API call
-    const response = await axios.get(process.env.CPCB_API_URL, {
-      params: {
-        'api-key': process.env.CPCB_API_KEY,
-        format: 'json',
-        filters: `[city=${city}]`,
-        limit: 10
-      }
+    const official = await fetchOfficialAqi(city);
+
+    if (!official) {
+      return res.json({ stations: [], officialAqi: null, source: null, isMock: true });
+    }
+
+    res.json({
+      stations: official.stations,
+      officialAqi: official.aqi,
+      source: official.source,
+      station: official.station,
+      isMock: official.source !== 'CPCB'
     });
-    const records = response.data?.records || [];
-    res.json({ stations: records });
   } catch (err) {
-    // Fallback: return mock data if CPCB API unavailable
-    console.warn('CPCB API unavailable, using mock data');
     res.json({
       stations: getMockCpcbData(req.query.city),
+      officialAqi: null,
+      source: 'mock',
       isMock: true
     });
   }
@@ -67,11 +70,32 @@ exports.getCurrentAqi = async (req, res) => {
 
     if (!latest) return res.json({ aqi: null, category: 'unknown', advisory: getAdvisory(null) });
 
-    const aqi = latest.communityAqi || latest.officialAqi;
+    let officialAqi = latest.officialAqi;
+    let officialStation = latest.officialStation;
+
+    if (!officialAqi && latest.city) {
+      const official = await fetchOfficialAqi(latest.city);
+      if (official?.aqi) {
+        officialAqi = official.aqi;
+        officialStation = official.station;
+        await AqiAggregate.findByIdAndUpdate(latest._id, {
+          officialAqi,
+          officialStation,
+          officialDataFetched: true,
+          ...(latest.communityAqi ? {
+            divergenceRatio: latest.communityAqi / officialAqi,
+            anomalyFlagged: latest.communityAqi / officialAqi >= 2.0
+          } : {})
+        });
+      }
+    }
+
+    const aqi = latest.communityAqi || officialAqi;
     res.json({
       aqi,
       communityAqi: latest.communityAqi,
-      officialAqi: latest.officialAqi,
+      officialAqi,
+      officialStation,
       category: getCategory(aqi),
       advisory: getAdvisory(aqi),
       confidenceScore: latest.confidenceScore,

@@ -1,5 +1,6 @@
 const Report = require('../models/Report');
 const AqiAggregate = require('../models/AqiAggregate');
+const { fetchOfficialAqi } = require('./officialAqi');
 
 // Confidence scoring logic:
 // Low: < 3 reports or high variance
@@ -47,6 +48,7 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
   const median = sorted[Math.floor(sorted.length / 2)];
   const variance = calculateVariance(aqiValues);
   const { label, value } = getConfidenceLabel(reports.length, variance);
+  const official = await fetchOfficialAqi(city);
 
   // Sources breakdown
   const sourcesBreakdown = {};
@@ -66,8 +68,16 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
     reportCount: reports.length,
     confidenceScore: label,
     confidenceValue: value,
-    sourcesBreakdown
+    sourcesBreakdown,
+    officialAqi: official?.aqi || null,
+    officialStation: official?.station || null,
+    officialDataFetched: Boolean(official?.aqi)
   };
+
+  if (aggregateData.communityAqi && aggregateData.officialAqi) {
+    aggregateData.divergenceRatio = aggregateData.communityAqi / aggregateData.officialAqi;
+    aggregateData.anomalyFlagged = aggregateData.divergenceRatio >= 2.0;
+  }
 
   return AqiAggregate.findOneAndUpdate(
     { pincode, date: startOfDay },
