@@ -56,6 +56,20 @@ breathtruth-fullstack/
 - Export: PDFKit, csv-writer
 - Scheduling: node-cron
 
+## 🚀 Live Demo
+
+**[Visit BreathTruth Live App](https://breathtruth.vercel.app)** ← Click to open the web app
+
+The app is deployed and live! Start monitoring air quality in your community.
+
+### Deployment Details
+
+- **Frontend**: Deployed on Vercel (auto-deploys from GitHub)
+- **Backend API**: Deployed on Railway.app
+- **Database**: MongoDB Atlas (cloud)
+
+For deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Quick Start
 
 ### Prerequisites
