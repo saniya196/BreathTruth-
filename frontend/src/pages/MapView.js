@@ -39,20 +39,14 @@ async function geocodeCity(city) {
   if (!city) return null;
 
   try {
-    const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
-      params: {
-        q: city,
-        format: 'json',
-        limit: 1
-      },
-      headers: {
-        'User-Agent': 'BreathTruth/1.0 (map-city-geocode)'
-      },
-      timeout: 12000
-    });
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)},+India&format=json&limit=1`
+    );
+    const data = await res.json();
 
     if (Array.isArray(data) && data.length > 0) {
-      return [Number(data[0].lat), Number(data[0].lon)];
+      const { lat, lon } = data[0];
+      return [Number(lat), Number(lon)];
     }
   } catch {
     // Ignore city geocode failures and keep the current fallback center.
@@ -68,19 +62,6 @@ async function fetchProfileLocation() {
   } catch {
     return null;
   }
-}
-
-function buildOverpassQuery(lat, lng) {
-  return `
-    [out:json][timeout:25];
-    (
-      node["amenity"="school"](around:5000,${lat},${lng});
-      node["amenity"="hospital"](around:5000,${lat},${lng});
-      node["amenity"="college"](around:5000,${lat},${lng});
-      node["social_facility"="assisted_living"](around:5000,${lat},${lng});
-    );
-    out body;
-  `;
 }
 
 function normalizePoiType(tags = {}) {
@@ -104,16 +85,24 @@ export default function MapView() {
   const fetchMapData = async (center) => {
     setError('');
     try {
+      const query = `
+    [out:json][timeout:25];
+    (
+      node["amenity"="school"](around:5000,${center[0]},${center[1]});
+      node["amenity"="hospital"](around:5000,${center[0]},${center[1]});
+      node["amenity"="college"](around:5000,${center[0]},${center[1]});
+      node["social_facility"="assisted_living"](around:5000,${center[0]},${center[1]});
+    );
+    out body;
+  `;
+
       const [zonesResult, instResult] = await Promise.allSettled([
         axios.get('/api/map/zones', {
           params: { pincode: user.pincode, locality: user.locality, city: user.city }
         }),
-        axios.post('https://overpass-api.de/api/interpreter', buildOverpassQuery(center[0], center[1]), {
-          headers: {
-            'Content-Type': 'text/plain',
-            'User-Agent': 'BreathTruth/1.0 (map-poi-fetch)'
-          },
-          timeout: 30000
+        fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: query
         })
       ]);
 
@@ -122,7 +111,8 @@ export default function MapView() {
       }
 
       if (instResult.status === 'fulfilled') {
-        const elements = Array.isArray(instResult.value.data?.elements) ? instResult.value.data.elements : [];
+        const overpassData = await instResult.value.json();
+        const elements = Array.isArray(overpassData?.elements) ? overpassData.elements : [];
         const poiData = elements
           .map((element) => {
             const lat = element.lat ?? element.center?.lat;
