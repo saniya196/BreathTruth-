@@ -8,8 +8,16 @@ import { getAqiColor, formatAqiLabel, AQI_CATEGORIES } from '../utils/aqiHelpers
 const INSTITUTION_ICONS = {
   school: '🏫',
   hospital: '🏥',
+  college: '🎓',
   old_age_home: '🏠',
   creche: '👶'
+};
+
+const POI_COLORS = {
+  school: '#3b82f6',
+  hospital: '#ef4444',
+  college: '#22c55e',
+  old_age_home: '#f97316'
 };
 
 function hashString(value) {
@@ -27,6 +35,62 @@ function getZoneMarkerCenter(zone, index, mapCenter) {
   return [mapCenter[0] + latOffset, mapCenter[1] + lngOffset];
 }
 
+async function geocodeCity(city) {
+  if (!city) return null;
+
+  try {
+    const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
+      params: {
+        q: city,
+        format: 'json',
+        limit: 1
+      },
+      headers: {
+        'User-Agent': 'BreathTruth/1.0 (map-city-geocode)'
+      },
+      timeout: 12000
+    });
+
+    if (Array.isArray(data) && data.length > 0) {
+      return [Number(data[0].lat), Number(data[0].lon)];
+    }
+  } catch {
+    // Ignore city geocode failures and keep the current fallback center.
+  }
+
+  return null;
+}
+
+async function fetchProfileLocation() {
+  try {
+    const { data } = await axios.get('/api/auth/me');
+    return data?.user || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildOverpassQuery(lat, lng) {
+  return `
+    [out:json][timeout:25];
+    (
+      node["amenity"="school"](around:5000,${lat},${lng});
+      node["amenity"="hospital"](around:5000,${lat},${lng});
+      node["amenity"="college"](around:5000,${lat},${lng});
+      node["social_facility"="assisted_living"](around:5000,${lat},${lng});
+    );
+    out body;
+  `;
+}
+
+function normalizePoiType(tags = {}) {
+  if (tags.amenity === 'school') return 'school';
+  if (tags.amenity === 'hospital') return 'hospital';
+  if (tags.amenity === 'college') return 'college';
+  if (tags.social_facility === 'assisted_living') return 'old_age_home';
+  return 'school';
+}
+
 export default function MapView() {
   const { user } = useAuth();
   const [zones, setZones] = useState([]);
@@ -37,37 +101,19 @@ export default function MapView() {
   const [locationNote, setLocationNote] = useState('');
   const [mapCenter, setMapCenter] = useState([17.385, 78.4867]);
 
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude, accuracy } = position.coords;
-          setMapCenter([latitude, longitude]);
-          setLocationNote(`Using your current location (accuracy ~${Math.round(accuracy)}m).`);
-        },
-        () => {
-          setLocationNote('Using your registered pincode/location because browser location access was denied.');
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 }
-      );
-    } else {
-      setLocationNote('Using your registered pincode/location because geolocation is unavailable in this browser.');
-    }
-
-    if (user?.pincode) {
-      fetchMapData();
-    }
-  }, [user]);
-
-  const fetchMapData = async () => {
+  const fetchMapData = async (center) => {
     setError('');
     try {
       const [zonesResult, instResult] = await Promise.allSettled([
         axios.get('/api/map/zones', {
           params: { pincode: user.pincode, locality: user.locality, city: user.city }
         }),
-        axios.get(`/api/map/institutions/${user.pincode}`, {
-          params: { locality: user.locality, city: user.city }
+        axios.post('https://overpass-api.de/api/interpreter', buildOverpassQuery(center[0], center[1]), {
+          headers: {
+            'Content-Type': 'text/plain',
+            'User-Agent': 'BreathTruth/1.0 (map-poi-fetch)'
+          },
+          timeout: 30000
         })
       ]);
 
@@ -76,17 +122,46 @@ export default function MapView() {
       }
 
       if (instResult.status === 'fulfilled') {
-        const instData = instResult.value.data || {};
-        setInstitutions(instData.institutions || []);
-        if (instData?.center?.lat && instData?.center?.lng) {
-          setMapCenter([instData.center.lat, instData.center.lng]);
-        }
-        if ((instData.institutions || []).length === 0) {
-          setError(instData.message || 'No nearby institutions were found for this area yet.');
+        const elements = Array.isArray(instResult.value.data?.elements) ? instResult.value.data.elements : [];
+        const poiData = elements
+          .map((element) => {
+            const lat = element.lat ?? element.center?.lat;
+            const lng = element.lon ?? element.center?.lon;
+            if (lat == null || lng == null) return null;
+
+            const tags = element.tags || {};
+            const type = normalizePoiType(tags);
+            return {
+              id: element.id,
+              type,
+              name: tags.name || 'Unnamed place',
+              address: tags['addr:full'] || tags['addr:street'] || tags['addr:city'] || 'Address not available',
+              lat: Number(lat),
+              lng: Number(lng)
+            };
+          })
+          .filter(Boolean);
+
+        setInstitutions(poiData);
+        if (poiData.length === 0) {
+          const fallback = await axios.get(`/api/map/institutions/${user.pincode}`, {
+            params: { locality: user.locality, city: user.city }
+          });
+          const fallbackInstitutions = fallback.data?.institutions || [];
+          setInstitutions(fallbackInstitutions);
+          if (fallbackInstitutions.length === 0) {
+            setError('No nearby institutions were found for this area yet.');
+          }
         }
       } else {
-        setInstitutions([]);
-        setError('Unable to fetch nearby institutions right now.');
+        const fallback = await axios.get(`/api/map/institutions/${user.pincode}`, {
+          params: { locality: user.locality, city: user.city }
+        });
+        const fallbackInstitutions = fallback.data?.institutions || [];
+        setInstitutions(fallbackInstitutions);
+        if (fallbackInstitutions.length === 0) {
+          setError('Unable to fetch nearby institutions right now.');
+        }
       }
     } catch (err) {
       console.error('Map data error:', err);
@@ -95,6 +170,56 @@ export default function MapView() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const resolveLocation = async () => {
+      let center = null;
+
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 8000,
+              maximumAge: 300000
+            });
+          });
+
+          const { latitude, longitude, accuracy } = position.coords;
+          center = [latitude, longitude];
+          setMapCenter(center);
+          setLocationNote(`Using your current location (accuracy ~${Math.round(accuracy)}m).`);
+        } catch {
+          center = null;
+        }
+      }
+
+      if (!center) {
+        const profile = await fetchProfileLocation();
+        const cityName = [profile?.city, profile?.state].filter(Boolean).join(', ') || user?.city || user?.locality;
+
+        if (cityName) {
+          const geocoded = await geocodeCity(cityName);
+          if (geocoded) {
+            center = geocoded;
+            setMapCenter(center);
+            setLocationNote(`Using your registered city: ${cityName}.`);
+          }
+        }
+      }
+
+      if (!center) {
+        center = mapCenter;
+        setLocationNote('Using the default map center because browser location and city geocoding were unavailable.');
+      }
+
+      await fetchMapData(center);
+    };
+
+    if (user) {
+      resolveLocation();
+    }
+  }, [user]);
 
   if (loading) return <div className="page-loader"><div className="spinner" /></div>;
 
@@ -191,16 +316,16 @@ export default function MapView() {
               key={`inst-${i}`}
               center={[inst.lat, inst.lng]}
               radius={8}
-              fillColor="#7c3aed"
-              color="#5b21b6"
+              fillColor={POI_COLORS[inst.type] || '#7c3aed'}
+              color={POI_COLORS[inst.type] || '#5b21b6'}
               weight={2}
               fillOpacity={0.9}
             >
               <Popup>
                 <div className="map-popup">
-                  <strong>{INSTITUTION_ICONS[inst.type]} {inst.name}</strong>
-                  <p>Type: {inst.type.replace('_', ' ')}</p>
-                  <p>Address: {inst.address}</p>
+                  <strong>{INSTITUTION_ICONS[inst.type] || '📍'} {inst.name}</strong>
+                  <p>Type: {(inst.type || 'unknown').replace('_', ' ')}</p>
+                  <p>Address: {inst.address || 'Address not available'}</p>
                   <p className="popup-warning">⚠️ Vulnerable population — monitor AQI closely</p>
                 </div>
               </Popup>
@@ -216,12 +341,12 @@ export default function MapView() {
           <div className="institution-list">
             {institutions.map((inst, i) => (
               <div key={i} className="institution-row">
-                <span className="inst-icon">{INSTITUTION_ICONS[inst.type]}</span>
+                <span className="inst-icon">{INSTITUTION_ICONS[inst.type] || '📍'}</span>
                 <div>
                   <strong>{inst.name}</strong>
-                  <p>{inst.address}</p>
+                  <p>{inst.address || 'Address not available'}</p>
                 </div>
-                <span className="inst-type">{inst.type.replace('_', ' ')}</span>
+                <span className="inst-type">{(inst.type || 'unknown').replace('_', ' ')}</span>
               </div>
             ))}
           </div>
