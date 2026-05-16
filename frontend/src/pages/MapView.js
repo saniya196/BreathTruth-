@@ -19,9 +19,26 @@ export default function MapView() {
   const [showInstitutions, setShowInstitutions] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [locationNote, setLocationNote] = useState('');
   const [mapCenter, setMapCenter] = useState([17.385, 78.4867]);
 
   useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude, accuracy } = position.coords;
+          setMapCenter([latitude, longitude]);
+          setLocationNote(`Using your current location (accuracy ~${Math.round(accuracy)}m).`);
+        },
+        () => {
+          setLocationNote('Using your registered pincode/location because browser location access was denied.');
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 }
+      );
+    } else {
+      setLocationNote('Using your registered pincode/location because geolocation is unavailable in this browser.');
+    }
+
     if (user?.pincode) {
       fetchMapData();
     }
@@ -31,7 +48,9 @@ export default function MapView() {
     setError('');
     try {
       const [zonesResult, instResult] = await Promise.allSettled([
-        axios.get('/api/map/zones'),
+        axios.get('/api/map/zones', {
+          params: { pincode: user.pincode, locality: user.locality, city: user.city }
+        }),
         axios.get(`/api/map/institutions/${user.pincode}`, {
           params: { locality: user.locality, city: user.city }
         })
@@ -68,7 +87,8 @@ export default function MapView() {
     <div className="page map-page">
       <div className="page-header">
         <h1 className="page-title">Area AQI Map</h1>
-        <p className="page-subtitle">Community-reported air quality zones with high-risk institutions</p>
+        <p className="page-subtitle">Your location: {user?.locality}, {user?.city} — Pincode {user?.pincode}</p>
+        {locationNote && <p className="muted-text" style={{ marginTop: 8 }}>{locationNote}</p>}
       </div>
 
       {/* Map Controls */}

@@ -11,9 +11,6 @@ export default function SubmitReport() {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
-    pincode: user?.pincode || '',
-    locality: user?.locality || '',
-    city: user?.city || '',
     hasDirectReading: true,
     aqiEstimate: '',
     symptoms: [],
@@ -39,9 +36,6 @@ export default function SubmitReport() {
     setSubmitting(true);
     try {
       const payload = {
-        pincode: form.pincode,
-        locality: form.locality,
-        city: form.city,
         aqiEstimate: form.hasDirectReading ? parseInt(form.aqiEstimate) : null,
         symptoms: !form.hasDirectReading ? form.symptoms : [],
         pollutionSource: form.pollutionSource,
@@ -62,7 +56,7 @@ export default function SubmitReport() {
       <div className="report-card">
         <div className="report-header">
           <h1>Submit Air Quality Report</h1>
-          <p>Your report helps build community-verified AQI data for <strong>{user?.locality}</strong></p>
+          <p>Your report helps build community-verified AQI data for <strong>{user?.locality}, {user?.city}</strong></p>
           <div className="step-indicator">
             {[1, 2, 3].map(s => (
               <div key={s} className={`step-dot ${step >= s ? 'active' : ''}`} />
@@ -73,20 +67,21 @@ export default function SubmitReport() {
         {/* Step 1: Location */}
         {step === 1 && (
           <div className="form-step">
-            <h2>Step 1: Confirm Location</h2>
-            <div className="form-group">
-              <label>Locality</label>
-              <input name="locality" value={form.locality} onChange={handleChange} className="form-input" />
-            </div>
+            <h2>Step 1: Your Location</h2>
+            <p className="form-hint">Reports are locked to your registered location so each user reports only for their own area.</p>
             <div className="form-row">
               <div className="form-group">
                 <label>Pincode</label>
-                <input name="pincode" value={form.pincode} onChange={handleChange} className="form-input" maxLength={6} />
+                <input value={user?.pincode || ''} className="form-input" maxLength={6} readOnly />
               </div>
               <div className="form-group">
                 <label>City</label>
-                <input name="city" value={form.city} onChange={handleChange} className="form-input" />
+                <input value={user?.city || ''} className="form-input" readOnly />
               </div>
+            </div>
+            <div className="form-group">
+              <label>Locality</label>
+              <input value={user?.locality || ''} className="form-input" readOnly />
             </div>
             <div className="use-gps">
               <button type="button" className="btn-ghost" onClick={() => {
@@ -189,7 +184,7 @@ export default function SubmitReport() {
             {/* Summary preview */}
             <div className="report-preview">
               <strong>Report Preview:</strong>
-              <p>📍 {form.locality}, {form.city} ({form.pincode})</p>
+              <p>📍 {user?.locality}, {user?.city} ({user?.pincode})</p>
               {form.hasDirectReading ? <p>📊 AQI: {form.aqiEstimate}</p> : <p>🤧 Symptoms: {form.symptoms.join(', ')}</p>}
               <p>🏭 Source: {form.pollutionSource}</p>
             </div>

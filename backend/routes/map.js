@@ -108,10 +108,17 @@ async function fetchInstitutionsNear(center) {
 // Get all areas with today's AQI for the map overlay
 router.get('/zones', async (req, res) => {
   try {
+    const { pincode, locality = '', city = '' } = req.query;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const zones = await AqiAggregate.find({ date: { $gte: today } })
-      .select('pincode locality city communityAqi officialAqi confidenceScore anomalyFlagged');
+    const filter = { date: { $gte: today } };
+    if (pincode) filter.pincode = pincode;
+    else if (locality) filter.locality = new RegExp(`^${locality}$`, 'i');
+    else if (city) filter.city = new RegExp(`^${city}$`, 'i');
+
+    const zones = await AqiAggregate.find(filter)
+      .select('pincode locality city communityAqi officialAqi confidenceScore anomalyFlagged')
+      .sort({ communityAqi: -1, officialAqi: -1 });
     res.json({ zones });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });

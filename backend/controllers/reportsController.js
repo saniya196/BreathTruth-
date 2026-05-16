@@ -8,7 +8,11 @@ const MIN_UNIQUE_REPORTERS = 11; // "more than 10" distinct accounts
 
 exports.submitReport = async (req, res) => {
   try {
-    const { pincode, locality, city, aqiEstimate, symptoms, pollutionSource, description, coordinates } = req.body;
+    const { aqiEstimate, symptoms, pollutionSource, description, coordinates } = req.body;
+
+    const pincode = req.user.pincode;
+    const locality = req.user.locality;
+    const city = req.user.city;
 
     // Symptom-to-AQI mapping if no direct measurement
     let finalAqi = aqiEstimate;
