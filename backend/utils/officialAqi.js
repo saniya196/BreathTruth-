@@ -32,9 +32,6 @@ function computeAqiFromPollutant(pollutant, concentration) {
       { c_lo: 121, c_hi: 250, i_lo: 301, i_hi: 400 },
       { c_lo: 251, c_hi: 500, i_lo: 401, i_hi: 500 }
     ],
-  };
-  // alias
-  breakpoints['pm25'] = breakpoints['pm2.5'];
     'pm10': [
       { c_lo: 0, c_hi: 50, i_lo: 0, i_hi: 50 },
       { c_lo: 51, c_hi: 100, i_lo: 51, i_hi: 100 },
@@ -76,6 +73,8 @@ function computeAqiFromPollutant(pollutant, concentration) {
       { c_lo: 749, c_hi: 10000, i_lo: 401, i_hi: 500 }
     ]
   };
+  // alias
+  breakpoints['pm25'] = breakpoints['pm2.5'];
 
   // Normalize pollutant key variations
   let p = key.replace(/\s|\./g, '');
