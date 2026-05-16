@@ -3,6 +3,9 @@ import axios from 'axios';
 
 const AuthContext = createContext(null);
 
+// Use the deployed API in production and allow local dev to keep working.
+axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'https://breathtruth.onrender.com';
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('bt_token'));
