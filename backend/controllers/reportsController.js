@@ -1,7 +1,7 @@
 const Report = require('../models/Report');
 const AqiAggregate = require('../models/AqiAggregate');
 const { recalculateAggregate } = require('../utils/aggregator');
-const { fetchOfficialAqi } = require('../utils/officialAqi');
+const { fetchOfficialAqiWithFallback } = require('../utils/officialAqi');
 
 const COMPLAINT_WINDOW_DAYS = 7;
 const MIN_UNIQUE_REPORTERS = 11; // "more than 10" distinct accounts
@@ -76,7 +76,11 @@ exports.getWeeklyTrend = async (req, res) => {
     // Backfill missing official AQI values so trend graph can always render government series.
     for (const agg of aggregates) {
       if (!agg.officialAqi && agg.city) {
-        const official = await fetchOfficialAqi(agg.city);
+        const official = await fetchOfficialAqiWithFallback({
+          city: agg.city,
+          pincode: agg.pincode,
+          locality: agg.locality
+        });
         if (official?.aqi) {
           agg.officialAqi = official.aqi;
           agg.officialStation = official.station;

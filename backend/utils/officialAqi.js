@@ -2,6 +2,124 @@ const axios = require('axios');
 
 const CPCB_API_URL = process.env.CPCB_API_URL || 'https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69';
 const CPCB_API_KEY = process.env.CPCB_API_KEY;
+const geocodeCache = new Map();
+
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function haversineMeters(a, b) {
+  if (!a || !b) return null;
+  const lat1 = Number(a.lat);
+  const lng1 = Number(a.lng);
+  const lat2 = Number(b.lat);
+  const lng2 = Number(b.lng);
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return null;
+
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const radius = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const aHarv = sinLat * sinLat + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * sinLng * sinLng;
+  return 2 * radius * Math.atan2(Math.sqrt(aHarv), Math.sqrt(1 - aHarv));
+}
+
+async function geocodeQuery(query) {
+  const normalized = normalizeText(query);
+  if (!normalized) return null;
+  if (geocodeCache.has(normalized)) return geocodeCache.get(normalized);
+
+  try {
+    const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
+      params: {
+        format: 'jsonv2',
+        q: query,
+        limit: 1,
+        countrycodes: 'in'
+      },
+      headers: {
+        'User-Agent': 'BreathTruth/1.0 (official-aqi-nearest-sensor)'
+      },
+      timeout: 12000
+    });
+
+    if (Array.isArray(data) && data.length > 0) {
+      const hit = { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+      geocodeCache.set(normalized, hit);
+      return hit;
+    }
+  } catch {
+    // ignore and let caller try the next query
+  }
+
+  geocodeCache.set(normalized, null);
+  return null;
+}
+
+async function reverseGeocodeCoordinates(coords) {
+  if (!coords) return null;
+
+  const cacheKey = `reverse:${coords.lat},${coords.lng}`;
+  if (geocodeCache.has(cacheKey)) return geocodeCache.get(cacheKey);
+
+  try {
+    const { data } = await axios.get('https://nominatim.openstreetmap.org/reverse', {
+      params: {
+        format: 'jsonv2',
+        lat: coords.lat,
+        lon: coords.lng,
+        zoom: 10,
+        addressdetails: 1
+      },
+      headers: {
+        'User-Agent': 'BreathTruth/1.0 (official-aqi-nearest-sensor)'
+      },
+      timeout: 12000
+    });
+
+    const address = data?.address || {};
+    const city = address.city || address.town || address.village || address.municipality || address.suburb || address.county || address.state_district || null;
+    geocodeCache.set(cacheKey, city);
+    return city;
+  } catch {
+    geocodeCache.set(cacheKey, null);
+    return null;
+  }
+}
+
+async function resolveAreaCoordinates(location = {}) {
+  const { pincode, locality, city } = location;
+  const queries = [
+    `${pincode || ''} ${locality || ''} ${city || ''} India`.trim(),
+    `${locality || ''} ${city || ''} India`.trim(),
+    `${pincode || ''} ${city || ''} India`.trim(),
+    `${city || ''} India`.trim(),
+    `${locality || ''} India`.trim(),
+    `${pincode || ''} India`.trim()
+  ].filter(Boolean);
+
+  for (const query of queries) {
+    const coords = await geocodeQuery(query);
+    if (coords) return coords;
+  }
+
+  return null;
+}
+
+async function resolveCityFromLocation(location = {}) {
+  const coords = await resolveAreaCoordinates(location);
+  if (!coords) return normalizeText(location.city) ? location.city : null;
+
+  const city = await reverseGeocodeCoordinates(coords);
+  return city || location.city || null;
+}
+
+async function resolveStationCoordinates(station, city) {
+  const queryParts = [station, city, 'India'].filter(Boolean);
+  return geocodeQuery(queryParts.join(' '));
+}
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -96,10 +214,22 @@ function computeAqiFromPollutant(pollutant, concentration) {
 }
 
 function normalizeCity(city) {
-  return String(city || '').trim().toLowerCase();
+  return normalizeText(city);
 }
 
-function buildStations(records, city) {
+function extractStationCoords(record = {}) {
+  const lat = record.lat ?? record.latitude ?? record.station_lat ?? record.stationLatitude;
+  const lng = record.lng ?? record.lon ?? record.longitude ?? record.station_lng ?? record.stationLongitude;
+  if (lat == null || lng == null) return null;
+
+  const parsedLat = Number(lat);
+  const parsedLng = Number(lng);
+  if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) return null;
+
+  return { lat: parsedLat, lng: parsedLng };
+}
+
+async function buildStations(records, city) {
   const cityNorm = normalizeCity(city);
   // Group records by station and compute per-station AQI (max pollutant AQI)
   const stationMap = new Map();
@@ -125,14 +255,21 @@ function buildStations(records, city) {
     if (pollutantAqi === null) continue;
 
     if (!stationMap.has(stationName)) stationMap.set(stationName, []);
-    stationMap.get(stationName).push({ pollutant: pollutant || 'unknown', concentration: avg, aqi: pollutantAqi, computed });
+    stationMap.get(stationName).push({
+      pollutant: pollutant || 'unknown',
+      concentration: avg,
+      aqi: pollutantAqi,
+      computed,
+      coords: extractStationCoords(record)
+    });
   }
 
   const stations = [];
   for (const [station, pollutants] of stationMap.entries()) {
     if (!pollutants || pollutants.length === 0) continue;
     const stationAqi = pollutants.reduce((max, p) => Math.max(max, p.aqi || 0), 0);
-    stations.push({ station, aqi: stationAqi, pollutants });
+    const coords = pollutants.find(p => p.coords)?.coords || null;
+    stations.push({ station, aqi: stationAqi, pollutants, coords });
   }
 
   if (stations.length === 0) return null;
@@ -142,11 +279,11 @@ function buildStations(records, city) {
     aqi: overallAqi,
     source: 'CPCB',
     station: stations[0].station,
-    stations: stations.map(({ station, aqi, pollutants }) => ({ station, aqi, pollutants }))
+    stations: stations.map(({ station, aqi, pollutants, coords }) => ({ station, aqi, pollutants, coords }))
   };
 }
 
-async function fetchCpcbAqi(city) {
+async function fetchCpcbAqi(city, targetLocation = null) {
   if (!city) return null;
 
   if (!CPCB_API_KEY) {
@@ -164,7 +301,7 @@ async function fetchCpcbAqi(city) {
     try {
       const { data } = await axios.get(CPCB_API_URL, { params, timeout: 9000 });
       const records = Array.isArray(data?.records) ? data.records : [];
-      const parsed = buildStations(records, city);
+      const parsed = await buildStations(records, city);
       if (parsed) return parsed;
     } catch (err) {
       if (err.response?.status && err.response.status < 500) continue;
@@ -197,4 +334,74 @@ async function fetchOfficialAqi(city) {
   return null;
 }
 
-module.exports = { fetchOfficialAqi };
+async function fetchNearestOfficialAqi(location = {}, fallbackCity = null) {
+  const target = await resolveAreaCoordinates(location);
+  const derivedCity = await resolveCityFromLocation(location);
+  const { city } = location || {};
+
+  const cityOrder = [];
+  if (derivedCity) cityOrder.push(derivedCity);
+  if (city && normalizeText(city) !== normalizeText(derivedCity)) cityOrder.push(city);
+  if (fallbackCity && normalizeText(fallbackCity) && !cityOrder.some(entry => normalizeText(entry) === normalizeText(fallbackCity))) {
+    cityOrder.push(fallbackCity);
+  }
+
+  let bestStation = null;
+  let bestDistance = null;
+  let bestCityResult = null;
+
+  for (const currentCity of cityOrder) {
+    const parsed = await fetchOfficialAqi(currentCity);
+    if (!parsed) continue;
+
+    if (!target) {
+      return parsed;
+    }
+
+    const stationsWithDistances = [];
+    for (const station of parsed.stations || []) {
+      let coords = station.coords || null;
+      if (!coords) {
+        coords = await resolveStationCoordinates(station.station, currentCity);
+      }
+
+      const distance = coords ? haversineMeters(target, coords) : null;
+      stationsWithDistances.push({ ...station, coords, distance });
+
+      if (distance != null && (bestDistance == null || distance < bestDistance)) {
+        bestDistance = distance;
+        bestStation = { ...station, coords, distance };
+        bestCityResult = parsed;
+      }
+    }
+
+    if (bestStation) {
+      return {
+        ...parsed,
+        station: bestStation.station,
+        stations: stationsWithDistances,
+        nearestStation: bestStation,
+        nearestDistanceMeters: bestStation.distance,
+        targetCoordinates: target
+      };
+    }
+  }
+
+  return bestCityResult;
+}
+
+async function fetchOfficialAqiWithFallback(locationOrCity, fallbackCity = null) {
+  const location = typeof locationOrCity === 'string'
+    ? { city: locationOrCity }
+    : (locationOrCity || {});
+
+  const primary = await fetchNearestOfficialAqi(location, fallbackCity);
+  if (primary) return primary;
+
+  const normalizedFallback = normalizeText(fallbackCity);
+  if (!normalizedFallback || normalizeText(location.city) === normalizedFallback) return null;
+
+  return fetchNearestOfficialAqi({ ...location, city: fallbackCity }, fallbackCity);
+}
+
+module.exports = { fetchOfficialAqi, fetchOfficialAqiWithFallback, fetchNearestOfficialAqi };

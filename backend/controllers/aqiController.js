@@ -1,12 +1,12 @@
 const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
-const { fetchOfficialAqi } = require('../utils/officialAqi');
+const { fetchOfficialAqiWithFallback } = require('../utils/officialAqi');
 
 // Fetch official AQI from CPCB API
 exports.getOfficialAqi = async (req, res) => {
   try {
-    const { city } = req.query;
-    const official = await fetchOfficialAqi(city);
+    const { city, pincode = '', locality = '' } = req.query;
+    const official = await fetchOfficialAqiWithFallback({ city, pincode, locality });
 
     if (!official) {
       return res.json({ stations: [], officialAqi: null, source: null, isMock: true });
@@ -21,7 +21,11 @@ exports.getOfficialAqi = async (req, res) => {
     });
   } catch (err) {
     res.json({
-      stations: getMockCpcbData(req.query.city),
+      stations: getMockCpcbData({
+        city: req.query.city,
+        pincode: req.query.pincode,
+        locality: req.query.locality
+      }),
       officialAqi: null,
       source: 'mock',
       isMock: true
@@ -73,8 +77,12 @@ exports.getCurrentAqi = async (req, res) => {
     let officialAqi = latest.officialAqi;
     let officialStation = latest.officialStation;
 
-    if (!officialAqi && latest.city) {
-      const official = await fetchOfficialAqi(latest.city);
+    if (!officialAqi) {
+      const official = await fetchOfficialAqiWithFallback({
+        city: latest.city,
+        pincode: latest.pincode,
+        locality: latest.locality
+      });
       if (official?.aqi) {
         officialAqi = official.aqi;
         officialStation = official.station;
@@ -146,10 +154,12 @@ function getAdvisory(aqi) {
   };
 }
 
-function getMockCpcbData(city) {
+function getMockCpcbData(location = {}) {
+  const city = typeof location === 'string' ? location : location.city;
+  const label = city || location.locality || location.pincode || 'Your area';
   return [
-    { station: `${city || 'Hyderabad'} Central`, aqi: 142, pollutant: 'PM2.5', lastUpdated: new Date() },
-    { station: `${city || 'Hyderabad'} North`, aqi: 128, pollutant: 'PM10', lastUpdated: new Date() }
+    { station: `${label} Central`, aqi: 142, pollutant: 'PM2.5', lastUpdated: new Date() },
+    { station: `${label} North`, aqi: 128, pollutant: 'PM10', lastUpdated: new Date() }
   ];
 }
 

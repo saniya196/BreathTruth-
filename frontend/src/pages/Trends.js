@@ -29,8 +29,8 @@ export default function Trends() {
       const formatted = data.trend.map(d => ({
         ...d,
         dateLabel: format(new Date(d.date), 'dd MMM'),
-        communityAqi: d.communityAqi || null,
-        officialAqi: d.officialAqi || null,
+        communityAqi: d.communityAqi ?? null,
+        officialAqi: d.officialAqi ?? null,
       }));
       setTrend(formatted);
     } catch (err) {
@@ -46,17 +46,17 @@ export default function Trends() {
     return (
       <div className="chart-tooltip">
         <p className="tooltip-date">{label}</p>
-        {d?.communityAqi && (
+        {d?.communityAqi != null && (
           <p style={{ color: getAqiColor(d.communityAqi) }}>
             Community: <strong>{d.communityAqi}</strong> — {formatAqiLabel(d.communityAqi)}
           </p>
         )}
-        {d?.officialAqi && (
+        {d?.officialAqi != null && (
           <p style={{ color: '#94a3b8' }}>
             Official: <strong>{d.officialAqi}</strong>
           </p>
         )}
-        {d?.reportCount && <p className="tooltip-meta">{d.reportCount} reports · {d.confidenceScore} confidence</p>}
+        {d?.reportCount != null && <p className="tooltip-meta">{d.reportCount} reports · {d.confidenceScore} confidence</p>}
       </div>
     );
   };
@@ -105,7 +105,7 @@ export default function Trends() {
                 <Area type="monotone" dataKey="communityAqi" name="Community AQI"
                   stroke="#ef4444" fill="url(#communityGrad)" strokeWidth={2} dot={{ r: 5 }} />
                 <Line type="monotone" dataKey="officialAqi" name="Official AQI (CPCB)"
-                  stroke="#94a3b8" strokeDasharray="5 5" strokeWidth={2} dot={{ r: 4 }} />
+                  stroke="#94a3b8" strokeDasharray="5 5" strokeWidth={2} dot={{ r: 4 }} connectNulls />
               </AreaChart>
             ) : (
               <LineChart data={trend}>
@@ -119,7 +119,7 @@ export default function Trends() {
                 <Line type="monotone" dataKey="communityAqi" name="Community AQI"
                   stroke="#ef4444" strokeWidth={2.5} dot={{ r: 5, fill: '#ef4444' }} activeDot={{ r: 8 }} />
                 <Line type="monotone" dataKey="officialAqi" name="Official AQI (CPCB)"
-                  stroke="#94a3b8" strokeDasharray="5 5" strokeWidth={2} dot={{ r: 4 }} />
+                  stroke="#94a3b8" strokeDasharray="5 5" strokeWidth={2} dot={{ r: 4 }} connectNulls />
               </LineChart>
             )}
           </ResponsiveContainer>
@@ -150,11 +150,11 @@ export default function Trends() {
       )}
 
       {/* Divergence Summary */}
-      {trend.some(d => d.communityAqi && d.officialAqi) && (
+      {trend.some(d => d.communityAqi != null && d.officialAqi != null) && (
         <div className="card divergence-card">
           <h3 className="card-title">Divergence Analysis</h3>
           <div className="divergence-list">
-            {trend.filter(d => d.communityAqi && d.officialAqi).map((d, i) => {
+            {trend.filter(d => d.communityAqi != null && d.officialAqi != null).map((d, i) => {
               const ratio = d.divergenceRatio || (d.communityAqi / d.officialAqi);
               return (
                 <div key={i} className={`divergence-row ${d.anomalyFlagged ? 'anomaly' : ''}`}>

@@ -12,6 +12,21 @@ const INSTITUTION_ICONS = {
   creche: '👶'
 };
 
+function hashString(value) {
+  return String(value || '').split('').reduce((hash, char) => {
+    return ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  }, 0);
+}
+
+function getZoneMarkerCenter(zone, index, mapCenter) {
+  if (zone?.lat && zone?.lng) return [zone.lat, zone.lng];
+
+  const seed = hashString(`${zone?.pincode || ''}|${zone?.locality || ''}|${zone?.city || ''}|${index}`);
+  const latOffset = ((seed & 0xff) / 255 - 0.5) * 0.08;
+  const lngOffset = (((seed >> 8) & 0xff) / 255 - 0.5) * 0.08;
+  return [mapCenter[0] + latOffset, mapCenter[1] + lngOffset];
+}
+
 export default function MapView() {
   const { user } = useAuth();
   const [zones, setZones] = useState([]);
@@ -128,12 +143,12 @@ export default function MapView() {
 
           {/* AQI Zone circles */}
           {zones.map((zone, i) => {
-            const aqi = zone.communityAqi || zone.officialAqi;
+            const aqi = zone.communityAqi ?? zone.officialAqi;
             if (!aqi) return null;
             return (
               <CircleMarker
                 key={i}
-                center={[17.385 + (Math.random() - 0.5) * 0.1, 78.486 + (Math.random() - 0.5) * 0.1]}
+                center={getZoneMarkerCenter(zone, i, mapCenter)}
                 radius={aqi > 300 ? 28 : aqi > 200 ? 22 : aqi > 100 ? 18 : 14}
                 fillColor={getAqiColor(aqi)}
                 color={getAqiColor(aqi)}

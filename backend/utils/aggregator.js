@@ -1,6 +1,6 @@
 const Report = require('../models/Report');
 const AqiAggregate = require('../models/AqiAggregate');
-const { fetchOfficialAqi } = require('./officialAqi');
+const { fetchOfficialAqiWithFallback } = require('./officialAqi');
 
 // Confidence scoring logic:
 // Low: < 3 reports or high variance
@@ -48,7 +48,7 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
   const median = sorted[Math.floor(sorted.length / 2)];
   const variance = calculateVariance(aqiValues);
   const { label, value } = getConfidenceLabel(reports.length, variance);
-  const official = await fetchOfficialAqi(city);
+  const official = await fetchOfficialAqiWithFallback({ pincode, locality, city });
 
   // Sources breakdown
   const sourcesBreakdown = {};

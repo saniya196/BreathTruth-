@@ -14,7 +14,10 @@ async function geocodeArea({ pincode, locality, city }) {
 
   const queries = [
     `${pincode || ''} ${locality || ''} ${city || ''} India`.trim(),
+    `${locality || ''} ${city || ''} India`.trim(),
     `${pincode || ''} ${city || ''} India`.trim(),
+    `${city || ''} India`.trim(),
+    `${locality || ''} India`.trim(),
     `${pincode || ''} India`.trim()
   ].filter(Boolean);
 
@@ -129,22 +132,30 @@ router.get('/zones', async (req, res) => {
 router.get('/institutions/:pincode', async (req, res) => {
   try {
     const { pincode } = req.params;
-    const { locality = '', city = 'Hyderabad' } = req.query;
+    const { locality = '', city = '' } = req.query;
 
     const center = await geocodeArea({ pincode, locality, city });
     if (!center) {
-      return res.status(404).json({
-        message: 'Could not locate this area for institution lookup.',
+      return res.json({
+        message: 'Could not locate this area for institution lookup yet. Try a more specific locality or city.',
         institutions: []
       });
     }
 
     const institutions = await fetchInstitutionsNear(center);
+    if (institutions.length === 0) {
+      return res.json({
+        message: 'No nearby institutions were found for this area yet.',
+        institutions,
+        center
+      });
+    }
+
     return res.json({ institutions, center });
   } catch (err) {
     console.error('Map institutions lookup failed:', err.message);
-    return res.status(500).json({
-      message: 'Unable to fetch nearby institutions right now.',
+    return res.json({
+      message: 'Unable to fetch nearby institutions right now. Please try again shortly.',
       error: err.message,
       institutions: []
     });
