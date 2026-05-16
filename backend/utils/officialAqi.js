@@ -229,14 +229,15 @@ function extractStationCoords(record = {}) {
   return { lat: parsedLat, lng: parsedLng };
 }
 
-async function buildStations(records, city) {
+async function buildStations(records, city, options = {}) {
+  const { allowAllCities = false } = options;
   const cityNorm = normalizeCity(city);
   // Group records by station and compute per-station AQI (max pollutant AQI)
   const stationMap = new Map();
 
   for (const record of records) {
     const recordCity = normalizeCity(record.city || record.city_name || record.City);
-    if (cityNorm && recordCity !== cityNorm) continue;
+    if (cityNorm && !allowAllCities && recordCity !== cityNorm) continue;
 
     const stationName = record.station || record.station_name || record.stn_name || record.city || city || 'unknown';
     const pollutantRaw = (record.pollutant || record.pollutant_id || record.pollutantId || '').toString().trim();
@@ -316,16 +317,18 @@ async function fetchCpcbAqi(city, targetLocation = null) {
       timeout: 9000
     });
     const records = Array.isArray(data?.records) ? data.records : [];
-    return buildStations(records, city);
+    const parsed = await buildStations(records, city, { allowAllCities: Boolean(targetLocation) });
+    if (parsed) return parsed;
+    return null;
   } catch (err) {
     if (err.response?.status && err.response.status < 500) return null;
     throw err;
   }
 }
 
-async function fetchOfficialAqi(city) {
+async function fetchOfficialAqi(city, targetLocation = null) {
   try {
-    const cpcb = await fetchCpcbAqi(city);
+    const cpcb = await fetchCpcbAqi(city, targetLocation);
     if (cpcb) return cpcb;
   } catch (err) {
     console.warn('CPCB fetch failed:', err.message);
@@ -351,7 +354,7 @@ async function fetchNearestOfficialAqi(location = {}, fallbackCity = null) {
   let bestCityResult = null;
 
   for (const currentCity of cityOrder) {
-    const parsed = await fetchOfficialAqi(currentCity);
+    const parsed = await fetchOfficialAqi(currentCity, target);
     if (!parsed) continue;
 
     if (!target) {

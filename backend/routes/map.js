@@ -49,6 +49,49 @@ async function geocodeArea({ pincode, locality, city }) {
     }
   }
 
+  if (pincode) {
+    try {
+      const latest = await AqiAggregate.findOne({ pincode }).sort({ date: -1 }).select('locality city');
+      if (latest?.locality || latest?.city) {
+        const fallbackQueries = [
+          `${pincode || ''} ${latest.locality || ''} ${latest.city || ''} India`.trim(),
+          `${latest.locality || ''} ${latest.city || ''} India`.trim(),
+          `${latest.city || ''} India`.trim()
+        ].filter(Boolean);
+
+        for (const query of fallbackQueries) {
+          try {
+            const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
+              params: {
+                format: 'jsonv2',
+                q: query,
+                limit: 1,
+                countrycodes: 'in'
+              },
+              headers: {
+                'User-Agent': 'BreathTruth/1.0 (community-aqi-map)'
+              },
+              timeout: 12000
+            });
+
+            if (Array.isArray(data) && data.length > 0) {
+              const hit = {
+                lat: Number(data[0].lat),
+                lng: Number(data[0].lon)
+              };
+              geocodeCache.set(cacheKey, hit);
+              return hit;
+            }
+          } catch {
+            // Try next stored-location fallback query.
+          }
+        }
+      }
+    } catch {
+      // Ignore lookup failures and return null below.
+    }
+  }
+
   return null;
 }
 
