@@ -18,6 +18,7 @@ export default function MapView() {
   const [institutions, setInstitutions] = useState([]);
   const [showInstitutions, setShowInstitutions] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [mapCenter, setMapCenter] = useState([17.385, 78.4867]);
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function MapView() {
   }, [user]);
 
   const fetchMapData = async () => {
+    setError('');
     try {
       const [zonesResult, instResult] = await Promise.allSettled([
         axios.get('/api/map/zones'),
@@ -45,11 +47,16 @@ export default function MapView() {
         if (instData?.center?.lat && instData?.center?.lng) {
           setMapCenter([instData.center.lat, instData.center.lng]);
         }
+        if ((instData.institutions || []).length === 0) {
+          setError(instData.message || 'No nearby institutions were found for this area yet.');
+        }
       } else {
         setInstitutions([]);
+        setError('Unable to fetch nearby institutions right now.');
       }
     } catch (err) {
       console.error('Map data error:', err);
+      setError(err.response?.data?.message || 'Unable to load map data right now.');
     } finally {
       setLoading(false);
     }
@@ -79,6 +86,12 @@ export default function MapView() {
           ))}
         </div>
       </div>
+
+      {error && (
+        <div className="card" style={{ marginBottom: '16px', borderLeft: '4px solid #f59e0b' }}>
+          <strong>Map note:</strong> {error}
+        </div>
+      )}
 
       {/* Leaflet Map */}
       <div className="map-container">
@@ -177,6 +190,13 @@ export default function MapView() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {showInstitutions && !loading && institutions.length === 0 && (
+        <div className="card institutions-card">
+          <h3 className="card-title">High-Risk Institutions in Your Area</h3>
+          <p className="muted-text">No institutions were returned for this area. Try another pincode or locality.</p>
         </div>
       )}
     </div>

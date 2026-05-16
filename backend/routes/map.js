@@ -135,6 +135,7 @@ router.get('/institutions/:pincode', async (req, res) => {
     const institutions = await fetchInstitutionsNear(center);
     return res.json({ institutions, center });
   } catch (err) {
+    console.error('Map institutions lookup failed:', err.message);
     return res.status(500).json({
       message: 'Unable to fetch nearby institutions right now.',
       error: err.message,
