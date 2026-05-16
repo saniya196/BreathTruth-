@@ -33,6 +33,10 @@ app.use('/api/civic', require('./routes/civic'));
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
+// Debug: report CLIENT_URL / CORS config for troubleshooting
+app.get('/api/debug/cors', (req, res) => {
+  res.json({ clientUrl: process.env.CLIENT_URL || null, corsOriginConfigured: !!process.env.CLIENT_URL });
+});
 // MongoDB connection (fallback allows local dev startup without a .env file)
 const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/breathtruth';
 mongoose.connect(mongoUri)
