@@ -102,6 +102,10 @@ export default function MapView() {
   const [error, setError] = useState('');
   const [locationNote, setLocationNote] = useState('');
   const [mapCenter, setMapCenter] = useState([17.385, 78.4867]);
+  const fallbackPincode = process.env.REACT_APP_MAP_PINCODE || '500075';
+  const activePincode = user?.pincode || fallbackPincode;
+  const activeLocality = user?.locality || 'Narsingi';
+  const activeCity = user?.city || 'Hyderabad';
 
   const fetchMapData = async (center) => {
     setError('');
@@ -109,7 +113,7 @@ export default function MapView() {
       // Fetch zones first (server-side cached data)
       try {
         const zonesResp = await axios.get('/api/map/zones', {
-          params: { pincode: user.pincode, locality: user.locality, city: user.city }
+          params: { pincode: activePincode, locality: activeLocality, city: activeCity }
         });
         setZones(zonesResp.data.zones || []);
       } catch (zErr) {
@@ -126,8 +130,8 @@ export default function MapView() {
       // Guard clause — don't run Overpass if coordinates are invalid
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
         console.error('Invalid coordinates, skipping POI fetch');
-        const fallback = await axios.get(`/api/map/institutions/${user.pincode}`, {
-          params: { locality: user.locality, city: user.city }
+        const fallback = await axios.get(`/api/map/institutions/${activePincode}`, {
+          params: { locality: activeLocality, city: activeCity }
         });
         const fallbackInstitutions = fallback.data?.institutions || [];
         setInstitutions(fallbackInstitutions);
@@ -136,8 +140,8 @@ export default function MapView() {
         }
       } else {
         try {
-          const { data } = await axios.get(`/api/map/institutions/${user.pincode}`, {
-            params: { locality: user.locality, city: user.city }
+          const { data } = await axios.get(`/api/map/institutions/${activePincode}`, {
+            params: { locality: activeLocality, city: activeCity }
           });
 
           const backendInstitutions = data?.institutions || [];
@@ -159,8 +163,8 @@ export default function MapView() {
           }
         } catch (fetchErr) {
           console.error('Institution fetch failed:', fetchErr);
-          const fallback = await axios.get(`/api/map/institutions/${user.pincode}`, {
-            params: { locality: user.locality, city: user.city }
+          const fallback = await axios.get(`/api/map/institutions/${activePincode}`, {
+            params: { locality: activeLocality, city: activeCity }
           });
           const fallbackInstitutions = fallback.data?.institutions || [];
           setInstitutions(fallbackInstitutions);
@@ -182,25 +186,25 @@ export default function MapView() {
       let center = null;
 
       // Prefer the registered pincode so map results always match the user's profile area.
-      if (user?.pincode) {
-        const pincodeCenter = await geocodePincode(user.pincode);
+      if (activePincode) {
+        const pincodeCenter = await geocodePincode(activePincode);
         if (pincodeCenter) {
           center = pincodeCenter;
           setMapCenter(center);
-          setLocationNote(`Using your registered pincode: ${user.pincode}.`);
+          setLocationNote(`Using pincode: ${activePincode}.`);
         }
       }
 
       if (!center) {
         const profile = await fetchProfileLocation();
-        const cityName = [profile?.city, profile?.state].filter(Boolean).join(', ') || user?.city || user?.locality;
+        const cityName = [profile?.city, profile?.state].filter(Boolean).join(', ') || activeCity || activeLocality;
 
         if (cityName) {
           const geocoded = await geocodeCity(cityName);
           if (geocoded) {
             center = geocoded;
             setMapCenter(center);
-            setLocationNote(`Using your registered city: ${cityName}.`);
+            setLocationNote(`Using city: ${cityName}.`);
           }
         }
       }
@@ -213,10 +217,8 @@ export default function MapView() {
       await fetchMapData(center);
     };
 
-    if (user) {
-      resolveLocation();
-    }
-  }, [user]);
+    resolveLocation();
+  }, [activePincode, activeCity, activeLocality]);
 
   if (loading) return <div className="page-loader"><div className="spinner" /></div>;
 
@@ -224,7 +226,7 @@ export default function MapView() {
     <div className="page map-page">
       <div className="page-header">
         <h1 className="page-title">Area AQI Map</h1>
-        <p className="page-subtitle">Your location: {user?.locality}, {user?.city} — Pincode {user?.pincode}</p>
+        <p className="page-subtitle">Your location: {activeLocality}, {activeCity} — Pincode {activePincode}</p>
         {locationNote && <p className="muted-text" style={{ marginTop: 8 }}>{locationNote}</p>}
       </div>
 
