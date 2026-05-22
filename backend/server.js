@@ -18,12 +18,28 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
   .map(origin => normalizeOrigin(origin))
   .filter(Boolean);
 
+const isAllowedOrigin = (origin) => {
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) return true;
+
+  if (allowedOrigins.includes(normalized)) return true;
+
+  try {
+    const url = new URL(normalized);
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return true;
+    if (url.hostname.endsWith('.vercel.app')) return true;
+  } catch {
+    // Ignore malformed origins and fall through to deny.
+  }
+
+  return false;
+};
+
 // Middleware
 app.use(cors({
   origin(origin, callback) {
     // Allow non-browser requests and same-origin calls.
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(normalizeOrigin(origin))) return callback(null, true);
+    if (isAllowedOrigin(origin)) return callback(null, true);
     return callback(new Error('CORS origin not allowed'));
   },
   credentials: true
