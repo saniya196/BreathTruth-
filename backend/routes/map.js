@@ -8,6 +8,45 @@ const INSTITUTION_RADIUS_METERS = 5000;
 const MAX_INSTITUTIONS = 50;
 const geocodeCache = new Map();
 const addressCache = new Map();
+const overpassEndpoints = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+];
+
+async function fetchOverpassData(overpassQuery) {
+  const attempts = [
+    {
+      data: `data=${encodeURIComponent(overpassQuery)}`,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    },
+    {
+      data: overpassQuery,
+      headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
+    },
+  ];
+
+  let lastError = null;
+  for (const endpoint of overpassEndpoints) {
+    for (const attempt of attempts) {
+      try {
+        const { data } = await axios.post(endpoint, attempt.data, {
+          headers: {
+            ...attempt.headers,
+            Accept: 'application/json',
+            'User-Agent': 'BreathTruth/1.0 (community-aqi-map)'
+          },
+          timeout: 20000
+        });
+        return data;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 async function geocodeArea({ pincode, locality, city }) {
   const cacheKey = `${pincode || ''}|${locality || ''}|${city || ''}`.toLowerCase();
@@ -182,14 +221,13 @@ async function fetchInstitutionsNear(center) {
     );
     out center tags;
   `;
-
-  const { data } = await axios.post('https://overpass-api.de/api/interpreter', query, {
-    headers: {
-      'Content-Type': 'text/plain',
-      'User-Agent': 'BreathTruth/1.0 (community-aqi-map)'
-    },
-    timeout: 20000
-  });
+  let data;
+  try {
+    data = await fetchOverpassData(query);
+  } catch (err) {
+    console.error('Overpass fetch failed for institutions:', err?.message || err);
+    data = { elements: [] };
+  }
 
   const elements = Array.isArray(data?.elements) ? data.elements : [];
   const institutions = elements
