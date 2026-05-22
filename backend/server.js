@@ -11,8 +11,23 @@ const app = express();
 // CRA proxy and some hosting layers add X-Forwarded-For; trust first proxy hop.
 app.set('trust proxy', 1);
 
+const normalizeOrigin = (origin) => String(origin || '').trim().replace(/\/+$/, '');
+
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
+  .split(',')
+  .map(origin => normalizeOrigin(origin))
+  .filter(Boolean);
+
 // Middleware
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
+app.use(cors({
+  origin(origin, callback) {
+    // Allow non-browser requests and same-origin calls.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(normalizeOrigin(origin))) return callback(null, true);
+    return callback(new Error('CORS origin not allowed'));
+  },
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -34,7 +49,11 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Dat
 
 // Debug: report CLIENT_URL / CORS config for troubleshooting
 app.get('/api/debug/cors', (req, res) => {
-  res.json({ clientUrl: process.env.CLIENT_URL || null, corsOriginConfigured: !!process.env.CLIENT_URL });
+  res.json({
+    clientUrl: process.env.CLIENT_URL || null,
+    allowedOrigins,
+    corsOriginConfigured: !!process.env.CLIENT_URL
+  });
 });
 // MongoDB connection (fallback allows local dev startup without a .env file)
 const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/breathtruth';
