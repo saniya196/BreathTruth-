@@ -38,3 +38,8 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+.env
+backend/.env
+frontend/.env.local
+frontend/.env

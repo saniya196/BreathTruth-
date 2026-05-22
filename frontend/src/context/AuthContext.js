@@ -3,8 +3,10 @@ import axios from 'axios';
 
 const AuthContext = createContext(null);
 
-// Use the deployed API in production and allow local dev to keep working.
-axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'https://breathtruth.onrender.com';
+// Prefer an explicit API URL, otherwise use the local dev proxy on localhost.
+// This keeps CRA proxy working in development and falls back to production only off localhost.
+const isLocalhost = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+axios.defaults.baseURL = process.env.REACT_APP_API_URL || (isLocalhost ? '' : 'https://breathtruth.onrender.com');
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);

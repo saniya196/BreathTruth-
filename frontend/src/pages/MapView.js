@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Circle, Popup, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -55,6 +55,26 @@ async function geocodeCity(city) {
   return null;
 }
 
+async function geocodePincode(pincode) {
+  if (!pincode) return null;
+
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(pincode)}&country=India&format=json&limit=1`
+    );
+    const data = await res.json();
+
+    if (Array.isArray(data) && data.length > 0) {
+      const { lat, lon } = data[0];
+      return [Number(lat), Number(lon)];
+    }
+  } catch {
+    // Ignore pincode geocode failures and fall back to city/default center.
+  }
+
+  return null;
+}
+
 async function fetchProfileLocation() {
   try {
     const { data } = await axios.get('/api/auth/me');
@@ -68,7 +88,8 @@ function normalizePoiType(tags = {}) {
   if (tags.amenity === 'school') return 'school';
   if (tags.amenity === 'hospital') return 'hospital';
   if (tags.amenity === 'college') return 'college';
-  if (tags.social_facility === 'assisted_living') return 'old_age_home';
+  if (tags.amenity === 'nursing_home') return 'old_age_home';
+  if (tags.social_facility === 'assisted_living' || tags.social_facility === 'nursing_home') return 'old_age_home';
   return 'school';
 }
 
@@ -81,32 +102,6 @@ export default function MapView() {
   const [error, setError] = useState('');
   const [locationNote, setLocationNote] = useState('');
   const [mapCenter, setMapCenter] = useState([17.385, 78.4867]);
-
-  useEffect(() => {
-    if (!user?.pincode) return;
-
-    let cancelled = false;
-
-    const fetchInstitutions = async () => {
-      try {
-        const { data } = await axios.get(`/api/aqi/institutions/${user.pincode}`);
-        if (cancelled) return;
-
-        setInstitutions(data.institutions || []);
-        if (Number.isFinite(Number(data.centerLat)) && Number.isFinite(Number(data.centerLon))) {
-          setMapCenter([Number(data.centerLat), Number(data.centerLon)]);
-        }
-      } catch (err) {
-        console.warn('Institution preload failed:', err?.message || err);
-      }
-    };
-
-    fetchInstitutions();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.pincode]);
 
   const fetchMapData = async (center) => {
     setError('');
@@ -131,7 +126,7 @@ export default function MapView() {
       // Guard clause — don't run Overpass if coordinates are invalid
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
         console.error('Invalid coordinates, skipping POI fetch');
-        const fallback = await axios.get(`/api/aqi/institutions/${user.pincode}`, {
+        const fallback = await axios.get(`/api/map/institutions/${user.pincode}`, {
           params: { locality: user.locality, city: user.city }
         });
         const fallbackInstitutions = fallback.data?.institutions || [];
@@ -140,61 +135,31 @@ export default function MapView() {
           setError('No nearby institutions were found for this area yet.');
         }
       } else {
-        const query = `
-    [out:json][timeout:25];
-    (
-      node["amenity"="school"](around:5000,${lat},${lng});
-      node["amenity"="hospital"](around:5000,${lat},${lng});
-      node["amenity"="college"](around:5000,${lat},${lng});
-      node["social_facility"="assisted_living"](around:5000,${lat},${lng});
-    );
-    out body;
-  `;
-
         try {
-          const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
-            method: 'POST',
-            body: query
+          const { data } = await axios.get(`/api/map/institutions/${user.pincode}`, {
+            params: { locality: user.locality, city: user.city }
           });
 
-          if (!overpassRes.ok) throw new Error(`Overpass responded ${overpassRes.status}`);
-
-          const overpassData = await overpassRes.json();
-          const elements = Array.isArray(overpassData?.elements) ? overpassData.elements : [];
-          const poiData = elements
-            .map((element) => {
-              const latEl = element.lat ?? element.center?.lat;
-              const lngEl = element.lon ?? element.center?.lon;
-              if (latEl == null || lngEl == null) return null;
-
-              const tags = element.tags || {};
-              const type = normalizePoiType(tags);
-              return {
-                id: element.id,
-                type,
-                name: tags.name || 'Unnamed place',
-                address: tags['addr:full'] || tags['addr:street'] || tags['addr:city'] || 'Address not available',
-                lat: Number(latEl),
-                lng: Number(lngEl)
-              };
-            })
-            .filter(Boolean);
+          const backendInstitutions = data?.institutions || [];
+          const poiData = backendInstitutions
+            .map((institution, index) => ({
+              id: institution.id || `${institution.name || 'inst'}-${index}`,
+              type: institution.type || 'school',
+              name: institution.name || 'Unnamed place',
+              address: institution.address || institution.name || 'Location details unavailable',
+              lat: Number(institution.lat),
+              lng: Number(institution.lng)
+            }))
+            .filter((institution) => Number.isFinite(institution.lat) && Number.isFinite(institution.lng));
 
           setInstitutions(poiData);
 
           if (poiData.length === 0) {
-            const fallback = await axios.get(`/api/aqi/institutions/${user.pincode}`, {
-              params: { locality: user.locality, city: user.city }
-            });
-            const fallbackInstitutions = fallback.data?.institutions || [];
-            setInstitutions(fallbackInstitutions);
-            if (fallbackInstitutions.length === 0) {
-              setError('No nearby institutions were found for this area yet.');
-            }
+            setError('No nearby institutions were found for this area yet.');
           }
         } catch (fetchErr) {
-          console.error('Overpass fetch failed:', fetchErr);
-          const fallback = await axios.get(`/api/aqi/institutions/${user.pincode}`, {
+          console.error('Institution fetch failed:', fetchErr);
+          const fallback = await axios.get(`/api/map/institutions/${user.pincode}`, {
             params: { locality: user.locality, city: user.city }
           });
           const fallbackInstitutions = fallback.data?.institutions || [];
@@ -216,22 +181,13 @@ export default function MapView() {
     const resolveLocation = async () => {
       let center = null;
 
-      if (navigator.geolocation) {
-        try {
-          const position = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 8000,
-              maximumAge: 300000
-            });
-          });
-
-          const { latitude, longitude, accuracy } = position.coords;
-          center = [latitude, longitude];
+      // Prefer the registered pincode so map results always match the user's profile area.
+      if (user?.pincode) {
+        const pincodeCenter = await geocodePincode(user.pincode);
+        if (pincodeCenter) {
+          center = pincodeCenter;
           setMapCenter(center);
-          setLocationNote(`Using your current location (accuracy ~${Math.round(accuracy)}m).`);
-        } catch {
-          center = null;
+          setLocationNote(`Using your registered pincode: ${user.pincode}.`);
         }
       }
 
@@ -251,7 +207,7 @@ export default function MapView() {
 
       if (!center) {
         center = mapCenter;
-        setLocationNote('Using the default map center because browser location and city geocoding were unavailable.');
+        setLocationNote('Using the default map center because pincode geocoding was unavailable.');
       }
 
       await fetchMapData(center);
@@ -351,6 +307,19 @@ export default function MapView() {
             <Tooltip permanent>📍 You</Tooltip>
           </CircleMarker>
 
+          {/* 5 km search radius */}
+          <Circle
+            center={mapCenter}
+            radius={5000}
+            pathOptions={{
+              color: '#2563eb',
+              fillColor: '#60a5fa',
+              fillOpacity: 0.08,
+              weight: 2,
+              dashArray: '8 8'
+            }}
+          />
+
           {/* Institution markers */}
           {showInstitutions && institutions.map((inst, i) => (
             <CircleMarker
@@ -366,7 +335,7 @@ export default function MapView() {
                 <div className="map-popup">
                   <strong>{INSTITUTION_ICONS[inst.type] || '📍'} {inst.name}</strong>
                   <p>Type: {(inst.type || 'unknown').replace('_', ' ')}</p>
-                  <p>Address: {inst.address || 'Address not available'}</p>
+                  <p>Address: {inst.address || inst.name || 'Location details unavailable'}</p>
                   <p className="popup-warning">⚠️ Vulnerable population — monitor AQI closely</p>
                 </div>
               </Popup>
@@ -385,7 +354,7 @@ export default function MapView() {
                 <span className="inst-icon">{INSTITUTION_ICONS[inst.type] || '📍'}</span>
                 <div>
                   <strong>{inst.name}</strong>
-                  <p>{inst.address || 'Address not available'}</p>
+                  <p>{inst.address || inst.name || 'Location details unavailable'}</p>
                 </div>
                 <span className="inst-type">{(inst.type || 'unknown').replace('_', ' ')}</span>
               </div>

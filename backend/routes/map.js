@@ -4,9 +4,10 @@ const router = express.Router();
 const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
 
-const INSTITUTION_RADIUS_METERS = 4000;
+const INSTITUTION_RADIUS_METERS = 5000;
 const MAX_INSTITUTIONS = 50;
 const geocodeCache = new Map();
+const addressCache = new Map();
 
 async function geocodeArea({ pincode, locality, city }) {
   const cacheKey = `${pincode || ''}|${locality || ''}|${city || ''}`.toLowerCase();
@@ -104,12 +105,73 @@ function normalizeInstitutionType(tags = {}) {
 }
 
 function formatInstitutionAddress(tags = {}) {
-  return [
+  const fullAddress = tags['addr:full'];
+  if (fullAddress) return fullAddress;
+
+  const streetLine = [
     tags['addr:housenumber'],
     tags['addr:street'],
-    tags['addr:suburb'],
-    tags['addr:city']
-  ].filter(Boolean).join(', ') || tags.name || 'Address not available';
+    tags['addr:locality'],
+    tags['addr:suburb']
+  ].filter(Boolean).join(' ');
+
+  const cityLine = [
+    tags['addr:city'],
+    tags['addr:district'],
+    tags['addr:state'],
+    tags['addr:postcode']
+  ].filter(Boolean).join(', ');
+
+  const parts = [streetLine, cityLine].filter(Boolean);
+  if (parts.length > 0) return parts.join(' • ');
+
+  const localityFallback = [tags['addr:suburb'], tags['addr:city'], tags['addr:district']].filter(Boolean).join(', ');
+  if (localityFallback) return `Near ${localityFallback}`;
+
+  return tags.name || 'Address not available';
+}
+
+async function reverseGeocodeAddress(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const cacheKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+  if (addressCache.has(cacheKey)) return addressCache.get(cacheKey);
+
+  try {
+    const { data } = await axios.get('https://nominatim.openstreetmap.org/reverse', {
+      params: {
+        format: 'jsonv2',
+        lat,
+        lon: lng,
+        zoom: 18,
+        addressdetails: 1
+      },
+      headers: {
+        'User-Agent': 'BreathTruth/1.0 (community-aqi-map)'
+      },
+      timeout: 12000
+    });
+
+    const address = data?.address || {};
+    const parts = [
+      data?.name,
+      address.house_number,
+      address.road,
+      address.suburb,
+      address.neighbourhood,
+      address.city || address.town || address.village,
+      address.district,
+      address.state,
+      address.postcode
+    ].filter(Boolean);
+
+    const resolved = parts.length > 0 ? parts.join(', ') : data?.display_name || null;
+    addressCache.set(cacheKey, resolved);
+    return resolved;
+  } catch {
+    addressCache.set(cacheKey, null);
+    return null;
+  }
 }
 
 async function fetchInstitutionsNear(center) {
@@ -131,24 +193,28 @@ async function fetchInstitutionsNear(center) {
 
   const elements = Array.isArray(data?.elements) ? data.elements : [];
   const institutions = elements
-    .map((el) => {
+    .map(async (el) => {
       const lat = el.lat ?? el.center?.lat;
       const lng = el.lon ?? el.center?.lon;
       if (lat == null || lng == null) return null;
 
       const tags = el.tags || {};
+      const tagAddress = formatInstitutionAddress(tags);
+      const resolvedAddress = tagAddress !== 'Address not available'
+        ? tagAddress
+        : (await reverseGeocodeAddress(Number(lat), Number(lng))) || tagAddress;
+
       return {
         type: normalizeInstitutionType(tags),
         name: tags.name || 'Unnamed Institution',
-        address: formatInstitutionAddress(tags),
+        address: resolvedAddress,
         lat: Number(lat),
         lng: Number(lng)
       };
     })
-    .filter(Boolean)
-    .slice(0, MAX_INSTITUTIONS);
+    .filter(Boolean);
 
-  return institutions;
+  return (await Promise.all(institutions)).filter(Boolean).slice(0, MAX_INSTITUTIONS);
 }
 
 // Get all areas with today's AQI for the map overlay

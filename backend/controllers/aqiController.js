@@ -17,11 +17,11 @@ exports.getOfficialAqi = async (req, res) => {
       officialAqi: official.aqi,
       source: official.source,
       station: official.station,
-      isMock: official.source !== 'CPCB'
+      isMock: official.source !== 'WAQI'
     });
   } catch (err) {
     res.json({
-      stations: getMockCpcbData({
+      stations: getMockOfficialData({
         city: req.query.city,
         pincode: req.query.pincode,
         locality: req.query.locality
@@ -159,7 +159,7 @@ function getAdvisory(aqi) {
   };
 }
 
-function getMockCpcbData(location = {}) {
+function getMockOfficialData(location = {}) {
   const city = typeof location === 'string' ? location : location.city;
   const label = city || location.locality || location.pincode || 'Your area';
   return [

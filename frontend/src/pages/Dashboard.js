@@ -58,7 +58,8 @@ export default function Dashboard() {
 
   if (loading) return <div className="page-loader"><div className="spinner" /><p>Loading air quality data…</p></div>;
 
-  const aqi = aqiData?.aqi;
+  const aqi = aqiData?.officialAqi ?? aqiData?.aqi;
+  const communityAqi = aqiData?.communityAqi;
   const hasAnomaly = aqiData?.anomalyFlagged;
   const comparisonOfficialAqi = nearestStation?.aqi ?? aqiData?.officialAqi;
 
@@ -82,6 +83,16 @@ export default function Dashboard() {
           <AqiGauge aqi={aqi} />
           {summary && <ConfidenceBadge score={summary.confidenceScore} />}
           <p className="aqi-meta">{summary?.reportCount || 0} community reports today</p>
+          {communityAqi != null && (
+            <p className="aqi-meta" style={{ marginTop: 6 }}>
+              Community AQI: <strong>{communityAqi}</strong>
+            </p>
+          )}
+          {aqiData?.officialAqi != null && (
+            <p className="aqi-meta" style={{ marginTop: 4 }}>
+              Official AQI: <strong>{aqiData.officialAqi}</strong>
+            </p>
+          )}
         </div>
 
         {/* Community vs Official */}
