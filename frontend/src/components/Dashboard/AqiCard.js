@@ -81,30 +81,45 @@ export function HealthAdvisory({ advisory, aqi }) {
   );
 }
 
-export function AqiComparisonBar({ communityAqi, officialAqi }) {
+export function AqiComparisonBar({ communityAqi, officialAqi, nearestStation = null }) {
   const maxVal = Math.max(communityAqi || 0, officialAqi || 0, 100);
   return (
-    <div className="comparison-bars">
-      <div className="bar-row">
-        <span className="bar-label">Community</span>
-        <div className="bar-track">
-          <div
-            className="bar-fill bar-fill--community"
-            style={{ width: `${((communityAqi || 0) / maxVal) * 100}%`, background: getAqiColor(communityAqi) }}
-          />
+    <div>
+      <div className="comparison-bars">
+        <div className="bar-row">
+          <span className="bar-label">Community</span>
+          <div className="bar-track">
+            <div
+              className="bar-fill bar-fill--community"
+              style={{ width: `${((communityAqi || 0) / maxVal) * 100}%`, background: getAqiColor(communityAqi) }}
+            />
+          </div>
+          <span className="bar-value">{communityAqi || '—'}</span>
         </div>
-        <span className="bar-value">{communityAqi || '—'}</span>
-      </div>
-      <div className="bar-row">
-        <span className="bar-label">Official</span>
-        <div className="bar-track">
-          <div
-            className="bar-fill bar-fill--official"
-            style={{ width: `${((officialAqi || 0) / maxVal) * 100}%`, background: '#94a3b8' }}
-          />
+        <div className="bar-row">
+          <span className="bar-label">Official</span>
+          <div className="bar-track">
+            <div
+              className="bar-fill bar-fill--official"
+              style={{ width: `${((officialAqi || 0) / maxVal) * 100}%`, background: '#94a3b8' }}
+            />
+          </div>
+          <span className="bar-value">{officialAqi || '—'}</span>
         </div>
-        <span className="bar-value">{officialAqi || '—'}</span>
       </div>
+      {nearestStation && (
+        <p style={{
+          fontSize: '12px',
+          color: '#6b7280',
+          marginTop: '8px',
+          padding: '6px 10px',
+          background: '#f3f4f6',
+          borderRadius: '6px',
+          borderLeft: '3px solid #818cf8'
+        }}>
+          No sensor found in pincode. Showing <strong>{nearestStation.stationName}</strong> (nearest available station) as reference.
+        </p>
+      )}
     </div>
   );
 }

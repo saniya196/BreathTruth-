@@ -58,7 +58,12 @@ exports.getComparison = async (req, res) => {
       ? withBoth.reduce((sum, c) => sum + (c.divergenceRatio || 1), 0) / withBoth.length
       : null;
 
-    res.json({ comparison, avgDivergence, daysWithAnomaly: withBoth.filter(c => c.anomalyFlagged).length });
+    res.json({
+      comparison,
+      avgDivergence,
+      daysWithAnomaly: withBoth.filter(c => c.anomalyFlagged).length,
+      hasLocalSensor: aggregates.length > 0
+    });
   } catch (err) {
     res.status(500).json({ message: 'Error fetching comparison', error: err.message });
   }

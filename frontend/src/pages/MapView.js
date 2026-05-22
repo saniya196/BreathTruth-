@@ -82,75 +82,126 @@ export default function MapView() {
   const [locationNote, setLocationNote] = useState('');
   const [mapCenter, setMapCenter] = useState([17.385, 78.4867]);
 
+  useEffect(() => {
+    if (!user?.pincode) return;
+
+    let cancelled = false;
+
+    const fetchInstitutions = async () => {
+      try {
+        const { data } = await axios.get(`/api/aqi/institutions/${user.pincode}`);
+        if (cancelled) return;
+
+        setInstitutions(data.institutions || []);
+        if (Number.isFinite(Number(data.centerLat)) && Number.isFinite(Number(data.centerLon))) {
+          setMapCenter([Number(data.centerLat), Number(data.centerLon)]);
+        }
+      } catch (err) {
+        console.warn('Institution preload failed:', err?.message || err);
+      }
+    };
+
+    fetchInstitutions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.pincode]);
+
   const fetchMapData = async (center) => {
     setError('');
     try {
-      const query = `
-    [out:json][timeout:25];
-    (
-      node["amenity"="school"](around:5000,${center[0]},${center[1]});
-      node["amenity"="hospital"](around:5000,${center[0]},${center[1]});
-      node["amenity"="college"](around:5000,${center[0]},${center[1]});
-      node["social_facility"="assisted_living"](around:5000,${center[0]},${center[1]});
-    );
-    out body;
-  `;
-
-      const [zonesResult, instResult] = await Promise.allSettled([
-        axios.get('/api/map/zones', {
+      // Fetch zones first (server-side cached data)
+      try {
+        const zonesResp = await axios.get('/api/map/zones', {
           params: { pincode: user.pincode, locality: user.locality, city: user.city }
-        }),
-        fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST',
-          body: query
-        })
-      ]);
-
-      if (zonesResult.status === 'fulfilled') {
-        setZones(zonesResult.value.data.zones || []);
+        });
+        setZones(zonesResp.data.zones || []);
+      } catch (zErr) {
+        // Non-fatal: continue to POI fetch/fallback
+        console.warn('Zones fetch failed:', zErr?.message || zErr);
       }
 
-      if (instResult.status === 'fulfilled') {
-        const overpassData = await instResult.value.json();
-        const elements = Array.isArray(overpassData?.elements) ? overpassData.elements : [];
-        const poiData = elements
-          .map((element) => {
-            const lat = element.lat ?? element.center?.lat;
-            const lng = element.lon ?? element.center?.lon;
-            if (lat == null || lng == null) return null;
+      const lat = Number(center?.[0]);
+      const lng = Number(center?.[1]);
 
-            const tags = element.tags || {};
-            const type = normalizePoiType(tags);
-            return {
-              id: element.id,
-              type,
-              name: tags.name || 'Unnamed place',
-              address: tags['addr:full'] || tags['addr:street'] || tags['addr:city'] || 'Address not available',
-              lat: Number(lat),
-              lng: Number(lng)
-            };
-          })
-          .filter(Boolean);
+      // Debug: ensure coordinates are valid before hitting Overpass
+      console.log('Fetching POIs around:', lat, lng);
 
-        setInstitutions(poiData);
-        if (poiData.length === 0) {
-          const fallback = await axios.get(`/api/map/institutions/${user.pincode}`, {
-            params: { locality: user.locality, city: user.city }
-          });
-          const fallbackInstitutions = fallback.data?.institutions || [];
-          setInstitutions(fallbackInstitutions);
-          if (fallbackInstitutions.length === 0) {
-            setError('No nearby institutions were found for this area yet.');
-          }
-        }
-      } else {
-        const fallback = await axios.get(`/api/map/institutions/${user.pincode}`, {
+      // Guard clause — don't run Overpass if coordinates are invalid
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+        console.error('Invalid coordinates, skipping POI fetch');
+        const fallback = await axios.get(`/api/aqi/institutions/${user.pincode}`, {
           params: { locality: user.locality, city: user.city }
         });
         const fallbackInstitutions = fallback.data?.institutions || [];
         setInstitutions(fallbackInstitutions);
         if (fallbackInstitutions.length === 0) {
-          setError('Unable to fetch nearby institutions right now.');
+          setError('No nearby institutions were found for this area yet.');
+        }
+      } else {
+        const query = `
+    [out:json][timeout:25];
+    (
+      node["amenity"="school"](around:5000,${lat},${lng});
+      node["amenity"="hospital"](around:5000,${lat},${lng});
+      node["amenity"="college"](around:5000,${lat},${lng});
+      node["social_facility"="assisted_living"](around:5000,${lat},${lng});
+    );
+    out body;
+  `;
+
+        try {
+          const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
+            method: 'POST',
+            body: query
+          });
+
+          if (!overpassRes.ok) throw new Error(`Overpass responded ${overpassRes.status}`);
+
+          const overpassData = await overpassRes.json();
+          const elements = Array.isArray(overpassData?.elements) ? overpassData.elements : [];
+          const poiData = elements
+            .map((element) => {
+              const latEl = element.lat ?? element.center?.lat;
+              const lngEl = element.lon ?? element.center?.lon;
+              if (latEl == null || lngEl == null) return null;
+
+              const tags = element.tags || {};
+              const type = normalizePoiType(tags);
+              return {
+                id: element.id,
+                type,
+                name: tags.name || 'Unnamed place',
+                address: tags['addr:full'] || tags['addr:street'] || tags['addr:city'] || 'Address not available',
+                lat: Number(latEl),
+                lng: Number(lngEl)
+              };
+            })
+            .filter(Boolean);
+
+          setInstitutions(poiData);
+
+          if (poiData.length === 0) {
+            const fallback = await axios.get(`/api/aqi/institutions/${user.pincode}`, {
+              params: { locality: user.locality, city: user.city }
+            });
+            const fallbackInstitutions = fallback.data?.institutions || [];
+            setInstitutions(fallbackInstitutions);
+            if (fallbackInstitutions.length === 0) {
+              setError('No nearby institutions were found for this area yet.');
+            }
+          }
+        } catch (fetchErr) {
+          console.error('Overpass fetch failed:', fetchErr);
+          const fallback = await axios.get(`/api/aqi/institutions/${user.pincode}`, {
+            params: { locality: user.locality, city: user.city }
+          });
+          const fallbackInstitutions = fallback.data?.institutions || [];
+          setInstitutions(fallbackInstitutions);
+          if (fallbackInstitutions.length === 0) {
+            setError('Unable to fetch nearby institutions right now.');
+          }
         }
       }
     } catch (err) {

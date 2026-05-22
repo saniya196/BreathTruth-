@@ -9,6 +9,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [aqiData, setAqiData] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [nearestStation, setNearestStation] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const handleExportCSV = async () => {
@@ -33,12 +34,21 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [aqiRes, summaryRes] = await Promise.all([
+      const [aqiRes, summaryRes, comparisonRes] = await Promise.all([
         axios.get(`/api/aqi/current/${user.pincode}`),
-        axios.get(`/api/reports/summary/${user.pincode}`)
+        axios.get(`/api/reports/summary/${user.pincode}`),
+        axios.get(`/api/aqi/comparison/${user.pincode}`).catch(() => null)
       ]);
       setAqiData(aqiRes.data);
       setSummary(summaryRes.data.summary);
+
+      const comparisonData = comparisonRes?.data;
+      if (comparisonData && !comparisonData.hasLocalSensor) {
+        const nearestRes = await axios.get(`/api/aqi/nearest/${user.pincode}`);
+        setNearestStation(nearestRes.data);
+      } else {
+        setNearestStation(null);
+      }
     } catch (err) {
       console.error('Dashboard fetch error:', err);
     } finally {
@@ -50,6 +60,7 @@ export default function Dashboard() {
 
   const aqi = aqiData?.aqi;
   const hasAnomaly = aqiData?.anomalyFlagged;
+  const comparisonOfficialAqi = nearestStation?.aqi ?? aqiData?.officialAqi;
 
   return (
     <div className="page dashboard-page">
@@ -78,7 +89,8 @@ export default function Dashboard() {
           <h3 className="card-title">Community vs Official AQI</h3>
           <AqiComparisonBar
             communityAqi={aqiData?.communityAqi}
-            officialAqi={aqiData?.officialAqi}
+            officialAqi={comparisonOfficialAqi}
+            nearestStation={nearestStation}
           />
           {hasAnomaly && (
             <AnomalyBanner
