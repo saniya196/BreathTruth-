@@ -107,8 +107,15 @@ exports.getAreaSummary = async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const aggregate = await AqiAggregate.findOne({ pincode, date: { $gte: today } });
 
-    // If no aggregate today, return last available
-    const latest = aggregate || await AqiAggregate.findOne({ pincode }).sort({ date: -1 });
+    // If no aggregate today, fall back to the most recent one within the last
+    // 7 days only — matching the same window used by getWeeklyTrend, so the
+    // Civic Action and Trends pages stay consistent instead of one showing
+    // stale data (sometimes weeks old) that the other has already excluded.
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const latest = aggregate || await AqiAggregate.findOne({
+      pincode,
+      date: { $gte: sevenDaysAgo }
+    }).sort({ date: -1 });
 
     const since = new Date(Date.now() - COMPLAINT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const [recentReportCount, uniqueReporterIds] = await Promise.all([
