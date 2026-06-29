@@ -4,8 +4,8 @@ const router = express.Router();
 const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
 
-const INSTITUTION_RADIUS_METERS = 5000;
-const MAX_INSTITUTIONS = 50;
+const INSTITUTION_RADIUS_METERS = 3000;
+const MAX_INSTITUTIONS = 150;
 const geocodeCache = new Map();
 const addressCache = new Map();
 const overpassEndpoints = [
@@ -13,6 +13,51 @@ const overpassEndpoints = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
 ];
+
+// --- Nominatim rate-limit handling -----------------------------------
+// Nominatim's usage policy allows ~1 request/second per IP. Render's free
+// tier shares outbound IPs across many apps, so we can get 429s even when
+// WE haven't sent many requests ourselves. This throttle + retry logic
+// smooths that out instead of failing the whole lookup on the first 429.
+
+let lastNominatimCallAt = 0;
+const NOMINATIM_MIN_GAP_MS = 1100; // a little over 1s to stay under the limit
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function throttleNominatim() {
+  const now = Date.now();
+  const elapsed = now - lastNominatimCallAt;
+  if (elapsed < NOMINATIM_MIN_GAP_MS) {
+    await sleep(NOMINATIM_MIN_GAP_MS - elapsed);
+  }
+  lastNominatimCallAt = Date.now();
+}
+
+async function nominatimGet(url, config, { retries = 3 } = {}) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    await throttleNominatim();
+    try {
+      return await axios.get(url, config);
+    } catch (err) {
+      const status = err?.response?.status;
+      const isRateLimited = status === 429;
+      const isLastAttempt = attempt === retries;
+
+      if (!isRateLimited || isLastAttempt) {
+        throw err;
+      }
+
+      // Exponential backoff with a little jitter: ~1.5s, 3s, 6s...
+      const backoffMs = 1500 * Math.pow(2, attempt) + Math.random() * 300;
+      console.warn(`Nominatim 429 — retrying in ${Math.round(backoffMs)}ms (attempt ${attempt + 1}/${retries})`);
+      await sleep(backoffMs);
+    }
+  }
+}
+// -----------------------------------------------------------------------
 
 async function fetchOverpassData(overpassQuery) {
   const attempts = [
@@ -63,7 +108,7 @@ async function geocodeArea({ pincode, locality, city }) {
 
   for (const query of queries) {
     try {
-      const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
+      const { data } = await nominatimGet('https://nominatim.openstreetmap.org/search', {
         params: {
           format: 'jsonv2',
           q: query,
@@ -84,7 +129,8 @@ async function geocodeArea({ pincode, locality, city }) {
         geocodeCache.set(cacheKey, hit);
         return hit;
       }
-    } catch {
+    } catch (err) {
+      console.debug('geocodeArea query failed:', query, err.message || err);
       // Try next query variant.
     }
   }
@@ -101,7 +147,7 @@ async function geocodeArea({ pincode, locality, city }) {
 
         for (const query of fallbackQueries) {
           try {
-            const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
+            const { data } = await nominatimGet('https://nominatim.openstreetmap.org/search', {
               params: {
                 format: 'jsonv2',
                 q: query,
@@ -122,12 +168,14 @@ async function geocodeArea({ pincode, locality, city }) {
               geocodeCache.set(cacheKey, hit);
               return hit;
             }
-          } catch {
+          } catch (err) {
+            console.debug('geocodeArea fallback query failed:', query, err.message || err);
             // Try next stored-location fallback query.
           }
         }
       }
-    } catch {
+    } catch (err) {
+      console.debug('geocodeArea stored-location lookup failed:', err.message || err);
       // Ignore lookup failures and return null below.
     }
   }
@@ -135,10 +183,53 @@ async function geocodeArea({ pincode, locality, city }) {
   return null;
 }
 
+// Fallback: try postalcode-style geocoding (some hosts respond better to this)
+async function geocodeByPincode(pincode) {
+  if (!pincode) return null;
+  const cacheKey = `pc|${pincode}`;
+  if (geocodeCache.has(cacheKey)) return geocodeCache.get(cacheKey);
+
+  try {
+    const { data } = await nominatimGet('https://nominatim.openstreetmap.org/search', {
+      params: { postalcode: pincode, country: 'India', format: 'json', limit: 1 },
+      headers: { 'User-Agent': 'BreathTruth/1.0 (community-aqi-map)' },
+      timeout: 12000
+    });
+
+    if (Array.isArray(data) && data.length > 0) {
+      const hit = { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+      geocodeCache.set(cacheKey, hit);
+      return hit;
+    }
+  } catch (err) {
+    // Ignore and return null below
+    console.debug('geocodeByPincode failed:', err.message || err);
+  }
+
+  return null;
+}
+
+function haversineDistanceMeters(lat1, lng1, lat2, lng2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371000; // Earth's radius in meters
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistanceLabel(meters) {
+  if (meters < 1000) return `${Math.round(meters)} m away`;
+  return `${(meters / 1000).toFixed(1)} km away`;
+}
+
 function normalizeInstitutionType(tags = {}) {
   const amenity = tags.amenity;
   if (amenity === 'hospital' || amenity === 'clinic' || amenity === 'doctors') return 'hospital';
-  if (amenity === 'school' || amenity === 'college' || amenity === 'kindergarten') return 'school';
+  if (amenity === 'school' || amenity === 'kindergarten') return 'school';
+  if (amenity === 'college' || amenity === 'university') return 'college';
   if (amenity === 'nursing_home' || amenity === 'social_facility') return 'old_age_home';
   return 'school';
 }
@@ -177,7 +268,7 @@ async function reverseGeocodeAddress(lat, lng) {
   if (addressCache.has(cacheKey)) return addressCache.get(cacheKey);
 
   try {
-    const { data } = await axios.get('https://nominatim.openstreetmap.org/reverse', {
+    const { data } = await nominatimGet('https://nominatim.openstreetmap.org/reverse', {
       params: {
         format: 'jsonv2',
         lat,
@@ -207,7 +298,8 @@ async function reverseGeocodeAddress(lat, lng) {
     const resolved = parts.length > 0 ? parts.join(', ') : data?.display_name || null;
     addressCache.set(cacheKey, resolved);
     return resolved;
-  } catch {
+  } catch (err) {
+    console.debug('reverseGeocodeAddress failed:', err.message || err);
     addressCache.set(cacheKey, null);
     return null;
   }
@@ -242,17 +334,23 @@ async function fetchInstitutionsNear(center) {
         ? tagAddress
         : (await reverseGeocodeAddress(Number(lat), Number(lng))) || tagAddress;
 
+      const distanceMeters = haversineDistanceMeters(center.lat, center.lng, Number(lat), Number(lng));
+
       return {
         type: normalizeInstitutionType(tags),
         name: tags.name || 'Unnamed Institution',
         address: resolvedAddress,
         lat: Number(lat),
-        lng: Number(lng)
+        lng: Number(lng),
+        distanceMeters: Math.round(distanceMeters),
+        distanceLabel: formatDistanceLabel(distanceMeters)
       };
     })
     .filter(Boolean);
 
-  return (await Promise.all(institutions)).filter(Boolean).slice(0, MAX_INSTITUTIONS);
+  const resolved = (await Promise.all(institutions)).filter(Boolean);
+  resolved.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  return resolved.slice(0, MAX_INSTITUTIONS);
 }
 
 // Get all areas with today's AQI for the map overlay
@@ -282,23 +380,29 @@ router.get('/institutions/:pincode', async (req, res) => {
     const { locality = '', city = '' } = req.query;
 
     const center = await geocodeArea({ pincode, locality, city });
-    if (!center) {
-      return res.json({
-        message: 'Could not locate this area for institution lookup yet. Try a more specific locality or city.',
-        institutions: []
-      });
-    }
+      let resolvedCenter = center;
+      if (!resolvedCenter && pincode) {
+        // Try postal-code geocode fallback (some environments respond better to postalcode param)
+        resolvedCenter = await geocodeByPincode(pincode);
+      }
 
-    const institutions = await fetchInstitutionsNear(center);
+      if (!resolvedCenter) {
+        return res.json({
+          message: 'Could not locate this area for institution lookup yet. Try a more specific locality or city.',
+          institutions: []
+        });
+      }
+
+    const institutions = await fetchInstitutionsNear(resolvedCenter);
     if (institutions.length === 0) {
       return res.json({
         message: 'No nearby institutions were found for this area yet.',
         institutions,
-        center
+        center: resolvedCenter
       });
     }
 
-    return res.json({ institutions, center });
+    return res.json({ institutions, center: resolvedCenter });
   } catch (err) {
     console.error('Map institutions lookup failed:', err.message);
     return res.json({

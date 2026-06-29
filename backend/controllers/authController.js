@@ -43,17 +43,14 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    let isValidPassword = false;
-    const bcryptHashRegex = /^\$2[aby]\$\d{2}\$.+/;
-
-    if (bcryptHashRegex.test(user.password || '')) {
-      isValidPassword = await user.comparePassword(password);
-    } else if (user.password === password) {
-      // Legacy account migration: old plaintext passwords are upgraded to bcrypt on successful login.
-      user.password = password;
-      await user.save();
-      isValidPassword = true;
-    }
+    // Every account is created via register(), which always passes through
+    // the User model's pre('save') hook and gets bcrypt-hashed before it's
+    // ever persisted — so comparePassword (bcrypt.compare) is the only
+    // valid check here. A previous plaintext-equality fallback branch was
+    // removed: it had no legitimate accounts to migrate (no code path in
+    // this app ever creates a non-hashed password) and only added
+    // unnecessary attack surface.
+    const isValidPassword = await user.comparePassword(password);
 
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Invalid email or password' });
