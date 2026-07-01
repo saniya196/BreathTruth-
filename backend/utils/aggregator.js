@@ -1,6 +1,7 @@
 const Report = require('../models/Report');
 const AqiAggregate = require('../models/AqiAggregate');
 const { fetchOfficialAqiWithFallback } = require('./officialAqi');
+const { nominatimGet } = require('./nominatim');
 
 // Confidence scoring logic:
 // Low: < 3 reports or high variance
@@ -29,6 +30,51 @@ function getConfidenceLabel(reportCount, variance) {
   return { label: variance > 2000 ? 'high' : 'verified', value: Math.min(90 + Math.floor(reportCount / 10), 100) };
 }
 
+// --- Geocoding for the map heatmap ------------------------------------
+// Coordinates only need to be resolved once per pincode, then reused on
+// every later aggregate for that same pincode. This in-memory cache avoids
+// re-geocoding (and re-throttling against Nominatim) on every report
+// submission for an already-known area.
+const pincodeCoordsCache = new Map();
+
+async function geocodePincode(pincode, locality, city) {
+  const cacheKey = String(pincode || '').trim();
+  if (!cacheKey) return null;
+  if (pincodeCoordsCache.has(cacheKey)) return pincodeCoordsCache.get(cacheKey);
+
+  const queries = [
+    `${pincode} ${locality || ''} ${city || ''} India`.trim(),
+    `${locality || ''} ${city || ''} India`.trim(),
+    `${pincode} India`.trim()
+  ].filter(Boolean);
+
+  for (const query of queries) {
+    try {
+      const { data } = await nominatimGet('https://nominatim.openstreetmap.org/search', {
+        params: { format: 'jsonv2', q: query, limit: 1, countrycodes: 'in' },
+        headers: { 'User-Agent': 'BreathTruth/1.0 (community-aqi-map)' },
+        timeout: 12000
+      });
+
+      if (Array.isArray(data) && data.length > 0) {
+        const coords = { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+        pincodeCoordsCache.set(cacheKey, coords);
+        return coords;
+      }
+    } catch (err) {
+      console.debug('geocodePincode query failed:', query, err.message || err);
+      // Try next query variant.
+    }
+  }
+
+  // Cache the miss too, briefly in-process, so a bad/unresolvable pincode
+  // doesn't trigger a fresh geocode attempt (and rate-limit risk) on every
+  // single report submitted for it within this server's lifetime.
+  pincodeCoordsCache.set(cacheKey, null);
+  return null;
+}
+// -----------------------------------------------------------------------
+
 exports.recalculateAggregate = async (pincode, locality, city, date) => {
   const startOfDay = new Date(date);
   startOfDay.setHours(0, 0, 0, 0);
@@ -50,6 +96,20 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
   const { label, value } = getConfidenceLabel(reports.length, variance);
   const official = await fetchOfficialAqiWithFallback({ pincode, locality, city });
 
+  // Reuse existing coordinates for this pincode if we've already geocoded
+  // it (either earlier today or on a previous aggregate), otherwise
+  // geocode it now so the map/heatmap has something to plot.
+  let coords = pincodeCoordsCache.get(String(pincode).trim());
+  if (coords === undefined) {
+    const existing = await AqiAggregate.findOne({ pincode, lat: { $ne: null } }).select('lat lng');
+    if (existing?.lat != null && existing?.lng != null) {
+      coords = { lat: existing.lat, lng: existing.lng };
+      pincodeCoordsCache.set(String(pincode).trim(), coords);
+    } else {
+      coords = await geocodePincode(pincode, locality, city);
+    }
+  }
+
   // Sources breakdown
   const sourcesBreakdown = {};
   reports.forEach(r => {
@@ -61,6 +121,8 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
   const aggregateData = {
     pincode, locality, city,
     date: startOfDay,
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
     communityAqi: avg,
     communityAqiMedian: median,
     communityAqiMin: Math.min(...aqiValues),

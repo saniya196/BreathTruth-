@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
+const { nominatimGet } = require('../utils/nominatim');
 
 const INSTITUTION_RADIUS_METERS = 3000;
 const MAX_INSTITUTIONS = 150;
@@ -14,50 +15,12 @@ const overpassEndpoints = [
   'https://lz4.overpass-api.de/api/interpreter',
 ];
 
-// --- Nominatim rate-limit handling -----------------------------------
-// Nominatim's usage policy allows ~1 request/second per IP. Render's free
-// tier shares outbound IPs across many apps, so we can get 429s even when
-// WE haven't sent many requests ourselves. This throttle + retry logic
-// smooths that out instead of failing the whole lookup on the first 429.
-
-let lastNominatimCallAt = 0;
-const NOMINATIM_MIN_GAP_MS = 1100; // a little over 1s to stay under the limit
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function throttleNominatim() {
-  const now = Date.now();
-  const elapsed = now - lastNominatimCallAt;
-  if (elapsed < NOMINATIM_MIN_GAP_MS) {
-    await sleep(NOMINATIM_MIN_GAP_MS - elapsed);
-  }
-  lastNominatimCallAt = Date.now();
-}
-
-async function nominatimGet(url, config, { retries = 3 } = {}) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    await throttleNominatim();
-    try {
-      return await axios.get(url, config);
-    } catch (err) {
-      const status = err?.response?.status;
-      const isRateLimited = status === 429;
-      const isLastAttempt = attempt === retries;
-
-      if (!isRateLimited || isLastAttempt) {
-        throw err;
-      }
-
-      // Exponential backoff with a little jitter: ~1.5s, 3s, 6s...
-      const backoffMs = 1500 * Math.pow(2, attempt) + Math.random() * 300;
-      console.warn(`Nominatim 429 — retrying in ${Math.round(backoffMs)}ms (attempt ${attempt + 1}/${retries})`);
-      await sleep(backoffMs);
-    }
-  }
-}
-// -----------------------------------------------------------------------
+// Nominatim throttling/retry logic now lives in utils/nominatim.js and is
+// shared with utils/aggregator.js (used there to geocode aggregates for the
+// map heatmap). Keeping one shared throttle here instead of two separate
+// ones ensures the real combined request rate against Nominatim's public
+// servers stays under their ~1 req/sec policy regardless of which part of
+// the app triggers a lookup.
 
 async function fetchOverpassData(overpassQuery) {
   const attempts = [
@@ -365,7 +328,7 @@ router.get('/zones', async (req, res) => {
     else if (city) filter.city = new RegExp(`^${city}$`, 'i');
 
     const zones = await AqiAggregate.find(filter)
-      .select('pincode locality city communityAqi officialAqi confidenceScore anomalyFlagged')
+      .select('pincode locality city lat lng communityAqi officialAqi confidenceScore anomalyFlagged')
       .sort({ communityAqi: -1, officialAqi: -1 });
     res.json({ zones });
   } catch (err) {

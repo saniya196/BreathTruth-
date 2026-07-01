@@ -5,6 +5,12 @@ const aqiAggregateSchema = new mongoose.Schema({
   locality: { type: String, required: true },
   city: { type: String, required: true },
   date: { type: Date, required: true }, // Stored as start of day UTC
+  // Geocoded coordinates for this pincode/locality, used for map plotting
+  // (heatmap, zone markers). Populated once by the aggregator and reused
+  // on every subsequent aggregate for the same pincode, since geocoding
+  // is throttled/rate-limited and a pincode's location doesn't change.
+  lat: { type: Number, default: null },
+  lng: { type: Number, default: null },
   // Community data
   communityAqi: { type: Number }, // Average of all reports
   communityAqiMedian: { type: Number },
