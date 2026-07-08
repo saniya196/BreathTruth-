@@ -70,6 +70,7 @@ export function Login() {
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
+        <Link to="/forgot-password" className="auth-forgot-link">Forgot password?</Link>
         <div className="auth-divider">
           <span>New here?</span>
         </div>

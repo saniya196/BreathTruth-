@@ -143,9 +143,43 @@ const updateSettingsValidationRules = [
     .withMessage("alertInApp must be true or false"),
 ];
 
+const forgotPasswordValidationRules = [
+  body('email')
+    .trim()
+    .notEmpty().withMessage('Email is required')
+    .isEmail().withMessage('Please provide a valid email address')
+    .normalizeEmail(),
+];
+
+const verifyOtpValidationRules = [
+  body('email')
+    .trim()
+    .notEmpty().withMessage('Email is required')
+    .isEmail().withMessage('Please provide a valid email address')
+    .normalizeEmail(),
+  body('otp')
+    .trim()
+    .notEmpty().withMessage('OTP is required')
+    .matches(/^\d{6}$/).withMessage('OTP must be a 6-digit code'),
+];
+
+const resetPasswordValidationRules = [
+  body('resetToken')
+    .notEmpty().withMessage('Reset session is required'),
+  body('newPassword')
+    .notEmpty().withMessage('Password is required')
+    .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
+    .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
+    .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
+    .matches(/[0-9]/).withMessage('Password must contain at least one number')
+    .matches(/[!@#$%^&*(),.?":{}|<>]/).withMessage('Password must contain at least one special character'),
+];
 module.exports = {
   handleValidationErrors,
   registerValidationRules,
   loginValidationRules,
   updateSettingsValidationRules,
+  forgotPasswordValidationRules,
+  verifyOtpValidationRules,
+  resetPasswordValidationRules,
 };

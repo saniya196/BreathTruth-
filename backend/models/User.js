@@ -16,6 +16,8 @@ const userSchema = new mongoose.Schema({
   alertInApp: { type: Boolean, default: true },
   reportsCount: { type: Number, default: 0 },
   isVerified: { type: Boolean, default: false },
+  resetOtpHash: { type: String, select: false },
+  resetOtpExpiry: { type: Date, select: false },
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
