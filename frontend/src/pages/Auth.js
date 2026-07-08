@@ -1,25 +1,30 @@
 // pages/Login.js
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import { useAuth } from "../context/AuthContext";
 
 export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
 
-  const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+  const handleChange = (e) =>
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
       await login(form.email, form.password);
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed');
+      const apiErrors = err.response?.data?.errors;
+      const msg = apiErrors?.length
+        ? apiErrors.map((e) => e.message).join(", ")
+        : err.response?.data?.message || "Login failed";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -34,20 +39,42 @@ export function Login() {
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Email</label>
-            <input type="email" name="email" value={form.email} onChange={handleChange}
-              className="form-input" required placeholder="you@example.com" />
+            <input
+              type="email"
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+              className="form-input"
+              required
+              placeholder="you@example.com"
+            />
           </div>
           <div className="form-group">
             <label>Password</label>
-            <input type="password" name="password" value={form.password} onChange={handleChange}
-              className="form-input" required placeholder="••••••••" />
+            <input
+              type="password"
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+              className="form-input"
+              required
+              placeholder="••••••••"
+            />
           </div>
-          <button type="submit" className="btn-primary btn-full" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
+          <button
+            type="submit"
+            className="btn-primary btn-full"
+            disabled={loading}
+          >
+            {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
-        <div className="auth-divider"><span>New here?</span></div>
-        <Link to="/register" className="btn-outline btn-full">Create New Account</Link>
+        <div className="auth-divider">
+          <span>New here?</span>
+        </div>
+        <Link to="/register" className="btn-outline btn-full">
+          Create New Account
+        </Link>
       </div>
     </div>
   );
@@ -56,22 +83,36 @@ export function Login() {
 export function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', email: '', password: '', pincode: '', locality: '', city: 'Hyderabad' });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    pincode: "",
+    locality: "",
+    city: "Hyderabad",
+  });
   const [loading, setLoading] = useState(false);
 
-  const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+  const handleChange = (e) =>
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.password.length < 6) return toast.error('Password must be at least 6 characters');
-    if (form.pincode.length !== 6) return toast.error('Enter a valid 6-digit pincode');
+    if (form.password.length < 6)
+      return toast.error("Password must be at least 6 characters");
+    if (form.pincode.length !== 6)
+      return toast.error("Enter a valid 6-digit pincode");
     setLoading(true);
     try {
       await register(form);
-      toast.success('Account created! Welcome to BreathTruth.');
-      navigate('/dashboard');
+      toast.success("Account created! Welcome to BreathTruth.");
+      navigate("/dashboard");
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Registration failed');
+      const apiErrors = err.response?.data?.errors;
+      const msg = apiErrors?.length
+        ? apiErrors.map((e) => e.message).join(", ")
+        : err.response?.data?.message || "Registration failed";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -87,36 +128,86 @@ export function Register() {
           <div className="form-row">
             <div className="form-group">
               <label>Full Name</label>
-              <input name="name" value={form.name} onChange={handleChange} className="form-input" required placeholder="Priya Sharma" />
+              <input
+                name="name"
+                value={form.name}
+                onChange={handleChange}
+                className="form-input"
+                required
+                placeholder="Priya Sharma"
+              />
             </div>
             <div className="form-group">
               <label>Email</label>
-              <input type="email" name="email" value={form.email} onChange={handleChange} className="form-input" required placeholder="priya@email.com" />
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={handleChange}
+                className="form-input"
+                required
+                placeholder="priya@email.com"
+              />
             </div>
           </div>
           <div className="form-group">
             <label>Password</label>
-            <input type="password" name="password" value={form.password} onChange={handleChange} className="form-input" required placeholder="Min 6 characters" />
+            <input
+              type="password"
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+              className="form-input"
+              required
+              placeholder="Min 6 characters"
+            />
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Locality / Area</label>
-              <input name="locality" value={form.locality} onChange={handleChange} className="form-input" required placeholder="Kondapur" />
+              <input
+                name="locality"
+                value={form.locality}
+                onChange={handleChange}
+                className="form-input"
+                required
+                placeholder="Kondapur"
+              />
             </div>
             <div className="form-group">
               <label>Pincode</label>
-              <input name="pincode" value={form.pincode} onChange={handleChange} className="form-input" required maxLength={6} placeholder="500084" />
+              <input
+                name="pincode"
+                value={form.pincode}
+                onChange={handleChange}
+                className="form-input"
+                required
+                maxLength={6}
+                placeholder="500084"
+              />
             </div>
           </div>
           <div className="form-group">
             <label>City</label>
-            <input name="city" value={form.city} onChange={handleChange} className="form-input" required />
+            <input
+              name="city"
+              value={form.city}
+              onChange={handleChange}
+              className="form-input"
+              required
+            />
           </div>
-          <button type="submit" className="btn-primary btn-full" disabled={loading}>
-            {loading ? 'Creating account…' : 'Create Account'}
+          <button
+            type="submit"
+            className="btn-primary btn-full"
+            disabled={loading}
+          >
+            {loading ? "Creating account…" : "Create Account"}
           </button>
         </form>
-        <p className="auth-footer">Already have an account? <Link to="/login">Sign in</Link></p>
+        <p className="auth-footer">
+          Already have an account? <Link to="/login">Sign in</Link>
+        </p>
       </div>
     </div>
   );
@@ -133,18 +224,18 @@ export function Settings() {
   });
   const [saving, setSaving] = useState(false);
 
-  const handleChange = e => {
+  const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm(f => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
+    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
       await updateSettings(form);
-      toast.success('Settings saved!');
+      toast.success("Settings saved!");
     } catch {
-      toast.error('Failed to save settings');
+      toast.error("Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -159,9 +250,13 @@ export function Settings() {
         <div className="profile-info">
           <div className="profile-avatar">{user?.name?.[0]}</div>
           <div>
-            <p><strong>{user?.name}</strong></p>
+            <p>
+              <strong>{user?.name}</strong>
+            </p>
             <p className="muted-text">{user?.email}</p>
-            <p className="muted-text">{user?.locality}, {user?.city} — {user?.pincode}</p>
+            <p className="muted-text">
+              {user?.locality}, {user?.city} — {user?.pincode}
+            </p>
           </div>
         </div>
       </div>
@@ -170,11 +265,30 @@ export function Settings() {
         <h3 className="card-title">Alert Preferences</h3>
         <div className="form-group">
           <label>AQI Alert Threshold</label>
-          <p className="form-hint">Get notified when community AQI in your area exceeds this value</p>
+          <p className="form-hint">
+            Get notified when community AQI in your area exceeds this value
+          </p>
           <div className="threshold-slider">
-            <input type="range" name="alertThreshold" min={50} max={400} step={25}
-              value={form.alertThreshold} onChange={handleChange} />
-            <span className="threshold-value" style={{ color: form.alertThreshold > 300 ? '#ef4444' : form.alertThreshold > 200 ? '#f97316' : '#22c55e' }}>
+            <input
+              type="range"
+              name="alertThreshold"
+              min={50}
+              max={400}
+              step={25}
+              value={form.alertThreshold}
+              onChange={handleChange}
+            />
+            <span
+              className="threshold-value"
+              style={{
+                color:
+                  form.alertThreshold > 300
+                    ? "#ef4444"
+                    : form.alertThreshold > 200
+                      ? "#f97316"
+                      : "#22c55e",
+              }}
+            >
               {form.alertThreshold} AQI
             </span>
           </div>
@@ -182,30 +296,62 @@ export function Settings() {
         <div className="toggle-settings">
           <label className="toggle-item">
             <span>Enable All Alerts</span>
-            <input type="checkbox" name="alertsEnabled" checked={form.alertsEnabled} onChange={handleChange} />
+            <input
+              type="checkbox"
+              name="alertsEnabled"
+              checked={form.alertsEnabled}
+              onChange={handleChange}
+            />
           </label>
           <label className="toggle-item">
             <span>Email Notifications</span>
-            <input type="checkbox" name="alertEmail" checked={form.alertEmail} onChange={handleChange} />
+            <input
+              type="checkbox"
+              name="alertEmail"
+              checked={form.alertEmail}
+              onChange={handleChange}
+            />
           </label>
           <label className="toggle-item">
             <span>In-App Notifications</span>
-            <input type="checkbox" name="alertInApp" checked={form.alertInApp} onChange={handleChange} />
+            <input
+              type="checkbox"
+              name="alertInApp"
+              checked={form.alertInApp}
+              onChange={handleChange}
+            />
           </label>
         </div>
         <button className="btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving…' : 'Save Settings'}
+          {saving ? "Saving…" : "Save Settings"}
         </button>
       </div>
 
       <div className="card">
         <h3 className="card-title">Account</h3>
         <div className="account-stats">
-          <span>Reports submitted: <strong>{user?.reportsCount || 0}</strong></span>
-          <span>Member since: <strong>{user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN') : '—'}</strong></span>
-          <span>Role: <strong>{user?.role}</strong></span>
+          <span>
+            Reports submitted: <strong>{user?.reportsCount || 0}</strong>
+          </span>
+          <span>
+            Member since:{" "}
+            <strong>
+              {user?.createdAt
+                ? new Date(user.createdAt).toLocaleDateString("en-IN")
+                : "—"}
+            </strong>
+          </span>
+          <span>
+            Role: <strong>{user?.role}</strong>
+          </span>
         </div>
-        <button className="btn-danger" onClick={() => { logout(); navigate('/login'); }}>
+        <button
+          className="btn-danger"
+          onClick={() => {
+            logout();
+            navigate("/login");
+          }}
+        >
           Logout
         </button>
       </div>
