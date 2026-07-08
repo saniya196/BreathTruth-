@@ -2,7 +2,13 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'breathtruth-dev-secret';
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET must be set in production. Refusing to start with an insecure default.');
+}
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️  JWT_SECRET not set — using an insecure development-only fallback. Set JWT_SECRET in backend/.env.');
+}
+const JWT_SECRET = process.env.JWT_SECRET || 'insecure-dev-only-secret-do-not-use-in-production';
 
 exports.protect = async (req, res, next) => {
   try {

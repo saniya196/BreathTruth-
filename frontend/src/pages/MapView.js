@@ -125,7 +125,6 @@ export default function MapView() {
       const lng = Number(center?.[1]);
 
       // Debug: ensure coordinates are valid before hitting Overpass
-      console.log('Fetching POIs around:', lat, lng);
 
       // Guard clause — don't run Overpass if coordinates are invalid
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
