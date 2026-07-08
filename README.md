@@ -207,6 +207,7 @@ npm run clean
 |---|---|---|---|
 | GET | `/api/aqi/official?city=` | No | Fetch official AQI for a city |
 | GET | `/api/aqi/current/:pincode` | No | Current AQI (community + official) for a pincode |
+| GET | `/api/aqi/nearest/:pincode` | No | Nearest official station for a pincode via WAQI |
 | GET | `/api/aqi/comparison/:pincode` | Yes | Historical community vs. official AQI comparison |
 
 ### Reports
@@ -249,7 +250,7 @@ npm run clean
 ## Deployment
 
 - **Frontend:** Vercel (auto-deploys from GitHub)
-- **Backend API:** Railway
+- **Backend API:** Render
 - **Database:** MongoDB Atlas
 
 Before deploying:

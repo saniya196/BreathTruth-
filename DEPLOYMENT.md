@@ -7,8 +7,8 @@ This guide walks you through deploying BreathTruth to production with free-tier 
 - GitHub account (done ✓)
 - MongoDB Atlas account (free): https://www.mongodb.com/cloud/atlas
 - Vercel account (free): https://vercel.com (for frontend)
-- Railway account (free): https://railway.app (for backend)
-  - OR Render account: https://render.com (alternative backend)
+- Render account (free): https://render.com (for backend)
+   - OR Railway account: https://railway.app (alternative backend)
 
 ---
 
@@ -27,10 +27,10 @@ This guide walks you through deploying BreathTruth to production with free-tier 
 
 ## Step 2: Deploy Backend (Node.js Server)
 
-### Option A: Using Railway.app (Recommended)
+### Option A: Using Render.com (Recommended)
 
-1. Sign up at https://railway.app
-2. Create new project → Deploy from GitHub
+1. Sign up at https://render.com
+2. Create new Web Service → Deploy from GitHub
 3. Select your `BreathTruth-` repository
 4. Select the `backend` directory
 5. Add environment variables:
@@ -45,24 +45,23 @@ This guide walks you through deploying BreathTruth to production with free-tier 
      EMAIL_PORT=587
      EMAIL_USER=your_email@gmail.com
      EMAIL_PASS=your_app_password
-     CPCB_API_KEY=your_key
-     CPCB_API_URL=https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69
+   WAQI_TOKEN=your_waqi_token
      PORT=5000
      ```
-6. Deploy → Railway auto-deploys from main branch
-7. Get your backend URL from Railway dashboard (e.g., `https://breathtruth-backend-prod.railway.app`)
+6. Deploy
+7. Get your backend URL from the Render dashboard (e.g., `https://breathtruth-backend.onrender.com`)
 
-### Option B: Using Render.com (Alternative)
+### Option B: Using Railway.app (Alternative)
 
-1. Sign up at https://render.com
-2. New → Web Service → Connect GitHub repo
+1. Sign up at https://railway.app
+2. New Project → Deploy from GitHub
 3. Select repository, search path: `backend`
 4. Configure:
    - Name: `breathtruth-backend`
    - Environment: `Node`
    - Build: `npm install`
    - Start: `node server.js`
-5. Add environment variables (same as Railway)
+5. Add environment variables (same as Render)
 6. Deploy
 
 ---
@@ -84,7 +83,7 @@ This guide walks you through deploying BreathTruth to production with free-tier 
 
 ## Step 4: Update Backend with Frontend URL
 
-1. Go back to Railway (or Render)
+1. Go back to Render (or Railway)
 2. Update environment variable:
    - `CLIENT_URL=https://breathtruth.vercel.app` (your actual Vercel URL)
 3. Redeploy
@@ -163,7 +162,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ✅ Never commit `.env` files (they're in `.gitignore`)
 ✅ Use strong JWT_SECRET in production
-✅ Store secrets in deployment platform (Railway/Vercel), not GitHub
+✅ Store secrets in deployment platform (Render/Vercel), not GitHub
 ✅ Rotate passwords periodically
 ✅ Update email app passwords if using Gmail
 
