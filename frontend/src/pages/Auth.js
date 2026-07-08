@@ -1,4 +1,5 @@
 // pages/Login.js
+import axios from "axios";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -92,16 +93,67 @@ export function Register() {
     city: "Hyderabad",
   });
   const [loading, setLoading] = useState(false);
+  const [localityOptions, setLocalityOptions] = useState([]);
+  const [cityLocked, setCityLocked] = useState(false);
+  const [pincodeChecking, setPincodeChecking] = useState(false);
 
   const handleChange = (e) =>
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
-
+  const handlePincodeChange = async (e) => {
+    const value = e.target.value;
+    setForm((f) => ({ ...f, pincode: value, locality: "" }));
+    if (value.length !== 6 || !/^\d{6}$/.test(value)) {
+      setLocalityOptions([]);
+      setCityLocked(false);
+      return;
+    }
+    setPincodeChecking(true);
+    try {
+      const { data } = await axios.get(
+        `https://api.postalpincode.in/pincode/${value}`,
+        {
+          withCredentials: false,
+        },
+      );
+      const result = data?.[0];
+      if (result?.Status === "Success" && result.PostOffice?.length) {
+        const city = result.PostOffice[0].District;
+        const localities = [...new Set(result.PostOffice.map((po) => po.Name))];
+        setForm((f) => ({ ...f, city }));
+        setLocalityOptions(localities);
+        setCityLocked(true);
+      } else {
+        toast.error("Pincode not found — please check and try again");
+        setLocalityOptions([]);
+        setCityLocked(false);
+      }
+    } catch {
+      toast.error("Could not verify pincode — check your connection");
+      setLocalityOptions([]);
+      setCityLocked(false);
+    } finally {
+      setPincodeChecking(false);
+    }
+  };
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.password.length < 6)
-      return toast.error("Password must be at least 6 characters");
+    const pwd = form.password;
+    if (pwd.length < 8)
+      return toast.error("Password must be at least 8 characters");
+    if (!/[A-Z]/.test(pwd))
+      return toast.error("Password must contain at least one uppercase letter");
+    if (!/[a-z]/.test(pwd))
+      return toast.error("Password must contain at least one lowercase letter");
+    if (!/[0-9]/.test(pwd))
+      return toast.error("Password must contain at least one number");
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pwd))
+      return toast.error(
+        "Password must contain at least one special character",
+      );
     if (form.pincode.length !== 6)
       return toast.error("Enter a valid 6-digit pincode");
+    if (!form.locality)
+      return toast.error("Please select a locality from the pincode results");
     setLoading(true);
     try {
       await register(form);
@@ -159,27 +211,40 @@ export function Register() {
               onChange={handleChange}
               className="form-input"
               required
-              placeholder="Min 6 characters"
+              placeholder="Min 8 characters, 1 uppercase, 1 number, 1 special"
             />
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Locality / Area</label>
-              <input
+              <select
                 name="locality"
                 value={form.locality}
                 onChange={handleChange}
                 className="form-input"
                 required
-                placeholder="Kondapur"
-              />
+                disabled={!localityOptions.length}
+              >
+                <option value="">
+                  {pincodeChecking
+                    ? "Checking pincode…"
+                    : localityOptions.length
+                      ? "Select your locality"
+                      : "Enter pincode first"}
+                </option>
+                {localityOptions.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="form-group">
               <label>Pincode</label>
               <input
                 name="pincode"
                 value={form.pincode}
-                onChange={handleChange}
+                onChange={handlePincodeChange}
                 className="form-input"
                 required
                 maxLength={6}
@@ -192,9 +257,10 @@ export function Register() {
             <input
               name="city"
               value={form.city}
-              onChange={handleChange}
               className="form-input"
               required
+              readOnly
+              disabled={cityLocked}
             />
           </div>
           <button
