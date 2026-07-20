@@ -4,10 +4,10 @@ const router = express.Router();
 const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
 const { nominatimGet } = require('../utils/nominatim');
+const { geocodeArea, geocodeByPincode, haversineDistanceMeters } = require('../utils/geocode');
 
 const INSTITUTION_RADIUS_METERS = 3000;
 const MAX_INSTITUTIONS = 150;
-const geocodeCache = new Map();
 const addressCache = new Map();
 const overpassEndpoints = [
   'https://overpass-api.de/api/interpreter',
@@ -54,133 +54,6 @@ async function fetchOverpassData(overpassQuery) {
   }
 
   throw lastError;
-}
-
-async function geocodeArea({ pincode, locality, city }) {
-  const cacheKey = `${pincode || ''}|${locality || ''}|${city || ''}`.toLowerCase();
-  if (geocodeCache.has(cacheKey)) return geocodeCache.get(cacheKey);
-
-  const queries = [
-    `${pincode || ''} ${locality || ''} ${city || ''} India`.trim(),
-    `${locality || ''} ${city || ''} India`.trim(),
-    `${pincode || ''} ${city || ''} India`.trim(),
-    `${city || ''} India`.trim(),
-    `${locality || ''} India`.trim(),
-    `${pincode || ''} India`.trim()
-  ].filter(Boolean);
-
-  for (const query of queries) {
-    try {
-      const { data } = await nominatimGet('https://nominatim.openstreetmap.org/search', {
-        params: {
-          format: 'jsonv2',
-          q: query,
-          limit: 1,
-          countrycodes: 'in'
-        },
-        headers: {
-          'User-Agent': 'BreathTruth/1.0 (community-aqi-map)'
-        },
-        timeout: 12000
-      });
-
-      if (Array.isArray(data) && data.length > 0) {
-        const hit = {
-          lat: Number(data[0].lat),
-          lng: Number(data[0].lon)
-        };
-        geocodeCache.set(cacheKey, hit);
-        return hit;
-      }
-    } catch (err) {
-      console.debug('geocodeArea query failed:', query, err.message || err);
-      // Try next query variant.
-    }
-  }
-
-  if (pincode) {
-    try {
-      const latest = await AqiAggregate.findOne({ pincode }).sort({ date: -1 }).select('locality city');
-      if (latest?.locality || latest?.city) {
-        const fallbackQueries = [
-          `${pincode || ''} ${latest.locality || ''} ${latest.city || ''} India`.trim(),
-          `${latest.locality || ''} ${latest.city || ''} India`.trim(),
-          `${latest.city || ''} India`.trim()
-        ].filter(Boolean);
-
-        for (const query of fallbackQueries) {
-          try {
-            const { data } = await nominatimGet('https://nominatim.openstreetmap.org/search', {
-              params: {
-                format: 'jsonv2',
-                q: query,
-                limit: 1,
-                countrycodes: 'in'
-              },
-              headers: {
-                'User-Agent': 'BreathTruth/1.0 (community-aqi-map)'
-              },
-              timeout: 12000
-            });
-
-            if (Array.isArray(data) && data.length > 0) {
-              const hit = {
-                lat: Number(data[0].lat),
-                lng: Number(data[0].lon)
-              };
-              geocodeCache.set(cacheKey, hit);
-              return hit;
-            }
-          } catch (err) {
-            console.debug('geocodeArea fallback query failed:', query, err.message || err);
-            // Try next stored-location fallback query.
-          }
-        }
-      }
-    } catch (err) {
-      console.debug('geocodeArea stored-location lookup failed:', err.message || err);
-      // Ignore lookup failures and return null below.
-    }
-  }
-
-  return null;
-}
-
-// Fallback: try postalcode-style geocoding (some hosts respond better to this)
-async function geocodeByPincode(pincode) {
-  if (!pincode) return null;
-  const cacheKey = `pc|${pincode}`;
-  if (geocodeCache.has(cacheKey)) return geocodeCache.get(cacheKey);
-
-  try {
-    const { data } = await nominatimGet('https://nominatim.openstreetmap.org/search', {
-      params: { postalcode: pincode, country: 'India', format: 'json', limit: 1 },
-      headers: { 'User-Agent': 'BreathTruth/1.0 (community-aqi-map)' },
-      timeout: 12000
-    });
-
-    if (Array.isArray(data) && data.length > 0) {
-      const hit = { lat: Number(data[0].lat), lng: Number(data[0].lon) };
-      geocodeCache.set(cacheKey, hit);
-      return hit;
-    }
-  } catch (err) {
-    // Ignore and return null below
-    console.debug('geocodeByPincode failed:', err.message || err);
-  }
-
-  return null;
-}
-
-function haversineDistanceMeters(lat1, lng1, lat2, lng2) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const R = 6371000; // Earth's radius in meters
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatDistanceLabel(meters) {

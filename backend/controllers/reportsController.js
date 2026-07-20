@@ -2,9 +2,12 @@ const Report = require('../models/Report');
 const AqiAggregate = require('../models/AqiAggregate');
 const { recalculateAggregate } = require('../utils/aggregator');
 const { fetchOfficialAqiWithFallback } = require('../utils/officialAqi');
+const { geocodeByPincode, haversineDistanceMeters } = require('../utils/geocode');
 
 const COMPLAINT_WINDOW_DAYS = 7;
 const MIN_UNIQUE_REPORTERS = 11; // "more than 10" distinct accounts
+const REPORT_COOLDOWN_MINUTES = 30; // min gap between reports from the same user for the same pincode
+const COORDINATE_MISMATCH_RADIUS_METERS = 15000; // soft-flag only — GPS drift near a pincode boundary is normal
 
 exports.submitReport = async (req, res) => {
   try {
@@ -14,10 +17,43 @@ exports.submitReport = async (req, res) => {
     const locality = req.user.locality;
     const city = req.user.city;
 
+    const cooldownSince = new Date(Date.now() - REPORT_COOLDOWN_MINUTES * 60 * 1000);
+    const recentReport = await Report.findOne({
+      user: req.user._id,
+      pincode,
+      timestamp: { $gte: cooldownSince }
+    });
+    if (recentReport) {
+      return res.status(429).json({
+        message: `You can submit another report for this area in a few minutes (limit: 1 per ${REPORT_COOLDOWN_MINUTES} min).`
+      });
+    }
+
     // Symptom-to-AQI mapping if no direct measurement
     let finalAqi = aqiEstimate;
     if (!aqiEstimate && symptoms && symptoms.length > 0) {
       finalAqi = mapSymptomsToAqi(symptoms);
+    }
+
+    // Soft-flag (never reject) reports whose GPS coordinates are far from
+    // the user's registered pincode — protects the data backing complaint
+    // PDFs without punishing normal GPS drift near a boundary.
+    let flagged = false;
+    let flagReason;
+    const reportLat = Number(coordinates?.lat);
+    const reportLng = Number(coordinates?.lng);
+    if (Number.isFinite(reportLat) && Number.isFinite(reportLng)) {
+      const pincodeCenter = await geocodeByPincode(pincode);
+      if (pincodeCenter) {
+        const distanceMeters = haversineDistanceMeters(
+          pincodeCenter.lat, pincodeCenter.lng,
+          reportLat, reportLng
+        );
+        if (distanceMeters > COORDINATE_MISMATCH_RADIUS_METERS) {
+          flagged = true;
+          flagReason = `Coordinates ${Math.round(distanceMeters / 1000)}km from registered pincode`;
+        }
+      }
     }
 
     const report = await Report.create({
@@ -26,7 +62,9 @@ exports.submitReport = async (req, res) => {
       aqiEstimate: finalAqi,
       symptoms: symptoms || [],
       pollutionSource: pollutionSource || 'unknown',
-      description
+      description,
+      flagged,
+      flagReason
     });
 
     // Update user report count
@@ -74,7 +112,7 @@ exports.getWeeklyTrend = async (req, res) => {
       .sort({ date: 1 });
 
     // Backfill missing official AQI values so trend graph can always render government series.
-    for (const agg of aggregates) {
+    await Promise.all(aggregates.map(async (agg) => {
       if (!agg.officialAqi && agg.city) {
         const official = await fetchOfficialAqiWithFallback({
           city: agg.city,
@@ -92,7 +130,7 @@ exports.getWeeklyTrend = async (req, res) => {
           await agg.save();
         }
       }
-    }
+    }));
 
     res.json({ trend: aggregates });
   } catch (err) {

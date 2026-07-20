@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const AqiAggregate = require('../models/AqiAggregate');
 const Report = require('../models/Report');
+const Escalation = require('../models/Escalation');
 
 const COMPLAINT_WINDOW_DAYS = 7;
 const MIN_UNIQUE_REPORTERS = 11; // "more than 10" distinct accounts
@@ -121,9 +122,33 @@ exports.generateComplaintPDF = async (req, res) => {
 exports.escalateArea = async (req, res) => {
   try {
     const { pincode, description } = req.body;
-    // Log escalation event (could trigger admin notification)
-    console.log(`Escalation filed for ${pincode} by ${req.user.email}`);
-    res.json({ message: 'Escalation logged. Download the PDF to send to authorities.' });
+    if (!pincode) {
+      return res.status(400).json({ message: 'pincode is required' });
+    }
+    const escalation = await Escalation.create({
+      user: req.user._id,
+      pincode,
+      locality: req.user.locality,
+      description
+    });
+    res.status(201).json({
+      message: 'Escalation logged. Download the PDF to send to authorities.',
+      escalation
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message });
+  }
+};
+
+// List escalations for a pincode — lets users/admins actually see what's been filed.
+exports.getEscalations = async (req, res) => {
+  try {
+    const { pincode } = req.params;
+    const escalations = await Escalation.find({ pincode })
+      .populate('user', 'name')
+      .sort({ createdAt: -1 })
+      .limit(50);
+    res.json({ escalations });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });
   }

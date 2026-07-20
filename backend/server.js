@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
 
@@ -36,6 +37,7 @@ const isAllowedOrigin = (origin) => {
 };
 
 // Middleware
+app.use(helmet());
 app.use(cors({
   origin(origin, callback) {
     // Allow non-browser requests and same-origin calls.

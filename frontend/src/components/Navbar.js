@@ -29,7 +29,7 @@ export default function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <Link to={user ? '/dashboard' : '/login'} className="brand-link">
+        <Link to={user ? '/dashboard' : '/'} className="brand-link">
           <img src="/logo.svg" alt="BreathTruth" className="brand-logo" />
           <span className="brand-name">BreathTruth</span>
         </Link>

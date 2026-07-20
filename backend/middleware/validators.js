@@ -174,6 +174,41 @@ const resetPasswordValidationRules = [
     .matches(/[0-9]/).withMessage('Password must contain at least one number')
     .matches(/[!@#$%^&*(),.?":{}|<>]/).withMessage('Password must contain at least one special character'),
 ];
+
+const reportValidationRules = [
+  body('aqiEstimate')
+    .optional({ nullable: true })
+    .isInt({ min: 0, max: 500 })
+    .withMessage('aqiEstimate must be a number between 0 and 500'),
+  body('symptoms')
+    .optional()
+    .isArray()
+    .withMessage('symptoms must be an array'),
+  body('symptoms.*')
+    .optional()
+    .isIn(['eye_irritation', 'throat_irritation', 'coughing', 'difficulty_breathing',
+          'headache', 'smell_pollution', 'visibility_reduced', 'none'])
+    .withMessage('Invalid symptom value'),
+  body('pollutionSource')
+    .notEmpty().withMessage('pollutionSource is required')
+    .isIn(['traffic', 'construction', 'factory', 'burning', 'dust', 'mixed', 'unknown'])
+    .withMessage('Invalid pollutionSource value'),
+  body('description')
+    .optional()
+    .isLength({ max: 500 }).withMessage('Description is too long'),
+  body('coordinates.lat')
+    .optional()
+    .isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+  body('coordinates.lng')
+    .optional()
+    .isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude'),
+  body().custom((value) => {
+    if (value.aqiEstimate == null && (!value.symptoms || value.symptoms.length === 0)) {
+      throw new Error('Provide either an aqiEstimate or at least one symptom');
+    }
+    return true;
+  }),
+];
 module.exports = {
   handleValidationErrors,
   registerValidationRules,
@@ -182,4 +217,5 @@ module.exports = {
   forgotPasswordValidationRules,
   verifyOtpValidationRules,
   resetPasswordValidationRules,
+  reportValidationRules,
 };

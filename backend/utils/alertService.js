@@ -1,13 +1,9 @@
-const nodemailer = require('nodemailer');
-const User = require('../models/User');
-const Alert = require('../models/Alert');
-const AqiAggregate = require('../models/AqiAggregate');
+const { Resend } = require("resend");
+const User = require("../models/User");
+const Alert = require("../models/Alert");
+const AqiAggregate = require("../models/AqiAggregate");
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 exports.sendThresholdAlerts = async () => {
   const today = new Date();
@@ -17,7 +13,7 @@ exports.sendThresholdAlerts = async () => {
   const usersWithAlerts = await User.find({ alertsEnabled: true });
 
   for (const user of usersWithAlerts) {
-    const agg = latestAggregates.find(a => a.pincode === user.pincode);
+    const agg = latestAggregates.find((a) => a.pincode === user.pincode);
     if (!agg) continue;
 
     const currentAqi = agg.communityAqi || agg.officialAqi;
@@ -27,54 +23,59 @@ exports.sendThresholdAlerts = async () => {
     const existingAlert = await Alert.findOne({
       user: user._id,
       pincode: user.pincode,
-      type: 'threshold_breach',
-      createdAt: { $gte: today }
+      type: "threshold_breach",
+      createdAt: { $gte: today },
     });
     if (existingAlert) continue;
 
-    const { getCategory } = require('../controllers/aqiController');
+    const { getCategory } = require("../controllers/aqiController");
     const category = getCategory(currentAqi);
     const title = `⚠️ AQI Alert: ${user.locality}`;
-    const message = `Current AQI in ${user.locality} has reached ${currentAqi} (${category.replace('_', ' ').toUpperCase()}), exceeding your threshold of ${user.alertThreshold}.`;
+    const message = `Current AQI in ${user.locality} has reached ${currentAqi} (${category.replace("_", " ").toUpperCase()}), exceeding your threshold of ${user.alertThreshold}.`;
 
     // Save in-app alert
     await Alert.create({
       user: user._id,
       pincode: user.pincode,
       locality: user.locality,
-      type: 'threshold_breach',
+      type: "threshold_breach",
       title,
       message,
       aqiAtAlert: currentAqi,
-      threshold: user.alertThreshold
+      threshold: user.alertThreshold,
     });
 
     // Send email if enabled
     if (user.alertEmail) {
       try {
-        await transporter.sendMail({
-          from: `BreathTruth <${process.env.EMAIL_USER}>`,
+        await resend.emails.send({
+          from: "BreathTruth <onboarding@resend.dev>",
           to: user.email,
           subject: title,
           html: `
-            <h2>Air Quality Alert — ${user.locality}</h2>
-            <p>${message}</p>
-            <p><strong>What to do:</strong></p>
-            <ul>
-              <li>Wear N95 mask if stepping out</li>
-              <li>Keep windows and doors closed</li>
-              <li>Avoid outdoor exercise</li>
-              <li>Children and elderly should stay indoors</li>
-            </ul>
-            <p>Visit <a href="https://breathtruth.in">BreathTruth</a> for real-time updates.</p>
-          `
+    <h2>Air Quality Alert — ${user.locality}</h2>
+    <p>${message}</p>
+    <p><strong>What to do:</strong></p>
+    <ul>
+      <li>Wear N95 mask if stepping out</li>
+      <li>Keep windows and doors closed</li>
+      <li>Avoid outdoor exercise</li>
+      <li>Children and elderly should stay indoors</li>
+    </ul>
+    <p>Visit <a href="https://breathtruth.in">BreathTruth</a> for real-time updates.</p>
+  `,
         });
         await Alert.findOneAndUpdate(
-          { user: user._id, pincode: user.pincode, type: 'threshold_breach', createdAt: { $gte: today } },
-          { emailSent: true }
+          {
+            user: user._id,
+            pincode: user.pincode,
+            type: "threshold_breach",
+            createdAt: { $gte: today },
+          },
+          { emailSent: true },
         );
       } catch (emailErr) {
-        console.error('Email send failed:', emailErr.message);
+        console.error("Email send failed:", emailErr.message);
       }
     }
   }
@@ -85,5 +86,9 @@ exports.getAlerts = async (userId) => {
 };
 
 exports.markAlertRead = async (alertId, userId) => {
-  return Alert.findOneAndUpdate({ _id: alertId, user: userId }, { read: true }, { new: true });
+  return Alert.findOneAndUpdate(
+    { _id: alertId, user: userId },
+    { read: true },
+    { new: true },
+  );
 };

@@ -580,6 +580,54 @@ input, textarea, select { font-family: var(--font-body); }
 .public-header { text-align: center; padding: 40px 0 32px; }
 .public-header h1 { font-family: var(--font-head); font-size: 28px; font-weight: 700; margin-bottom: 10px; }
 .public-header p { color: var(--text-muted); margin-bottom: 20px; }
+.pincode-search {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.pincode-search input {
+  width: min(100%, 300px);
+  padding: 12px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  background: var(--bg-card);
+  color: var(--text);
+}
+.pincode-search input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(14,165,233,0.12);
+}
+.public-search-error {
+  max-width: 520px;
+  margin: 0 auto 16px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid #fecaca;
+  text-align: center;
+  font-size: 14px;
+}
+.public-search-result {
+  max-width: 680px;
+  margin: 0 auto 28px;
+}
+.public-search-advisory {
+  margin: 8px 0 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+.public-search-precautions {
+  margin: 0 0 12px 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.public-search-meta { margin-top: 6px; }
 .public-zones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-bottom: 32px; }
 .zone-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; }
 .zone-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }

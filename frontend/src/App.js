@@ -16,6 +16,7 @@ import Alerts from './pages/Alerts';
 import CivicAction from './pages/CivicAction';
 import Settings from './pages/Settings';
 import PublicDashboard from './pages/PublicDashboard';
+import Landing from './pages/Landing';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -29,7 +30,7 @@ const AppRoutes = () => {
     <>
       <Navbar />
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
         <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
         <Route path="/forgot-password" element={user ? <Navigate to="/dashboard" /> : <ForgotPassword />} />
         <Route path="/register" element={user ? <Navigate to="/dashboard" /> : <Register />} />
