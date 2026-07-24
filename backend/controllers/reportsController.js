@@ -3,6 +3,7 @@ const AqiAggregate = require('../models/AqiAggregate');
 const { recalculateAggregate } = require('../utils/aggregator');
 const { fetchOfficialAqiWithFallback } = require('../utils/officialAqi');
 const { geocodeByPincode, haversineDistanceMeters } = require('../utils/geocode');
+const { getIO } = require('../utils/socketManager');
 
 const COMPLAINT_WINDOW_DAYS = 7;
 const MIN_UNIQUE_REPORTERS = 11; // "more than 10" distinct accounts
@@ -72,6 +73,20 @@ exports.submitReport = async (req, res) => {
 
     // Trigger aggregate recalculation for this pincode+day
     await recalculateAggregate(pincode, locality, city, new Date());
+
+    try {
+      getIO().to(String(pincode)).emit('report:new', {
+        pincode,
+        locality,
+        city,
+        aqiEstimate: finalAqi,
+        pollutionSource: pollutionSource || 'unknown',
+        reporterName: req.user.name,
+        timestamp: report.timestamp
+      });
+    } catch (e) {
+      // non-fatal
+    }
 
     res.status(201).json({ message: 'Report submitted successfully', report });
   } catch (err) {

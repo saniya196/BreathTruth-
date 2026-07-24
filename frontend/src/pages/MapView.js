@@ -96,6 +96,7 @@ function normalizePoiType(tags = {}) {
 export default function MapView() {
   const { user } = useAuth();
   const [zones, setZones] = useState([]);
+  const [nearestFallback, setNearestFallback] = useState(null);
   const [institutions, setInstitutions] = useState([]);
   const [showInstitutions, setShowInstitutions] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -115,10 +116,25 @@ export default function MapView() {
         const zonesResp = await axios.get('/api/map/zones', {
           params: { pincode: activePincode, locality: activeLocality, city: activeCity }
         });
-        setZones(zonesResp.data.zones || []);
+        const fetchedZones = zonesResp.data.zones || [];
+        setZones(fetchedZones);
+
+        // No community aggregate at all for this pincode yet — fall back to
+        // the nearest official station so the map isn't just an empty circle.
+        if (fetchedZones.length === 0) {
+          try {
+            const { data: nearest } = await axios.get(`/api/aqi/nearest/${activePincode}`);
+            setNearestFallback(nearest?.aqi ? nearest : null);
+          } catch {
+            setNearestFallback(null);
+          }
+        } else {
+          setNearestFallback(null);
+        }
       } catch (zErr) {
         // Non-fatal: continue to POI fetch/fallback
         console.warn('Zones fetch failed:', zErr?.message || zErr);
+        setNearestFallback(null);
       }
 
       const lat = Number(center?.[0]);
@@ -295,6 +311,35 @@ export default function MapView() {
               </CircleMarker>
             );
           })}
+
+          {zones.length === 0 && nearestFallback && (
+            <CircleMarker
+              center={mapCenter}
+              radius={18}
+              fillColor={getAqiColor(nearestFallback.aqi)}
+              color={getAqiColor(nearestFallback.aqi)}
+              weight={2}
+              opacity={0.8}
+              fillOpacity={0.35}
+              dashArray="4 4"
+            >
+              <Tooltip permanent direction="center" className="aqi-tooltip">
+                <strong>{nearestFallback.aqi}</strong>
+              </Tooltip>
+              <Popup>
+                <div className="map-popup">
+                  <strong>{nearestFallback.stationName || nearestFallback.station || 'Nearest station'}</strong>
+                  <p>
+                    🏛️ Nearest official AQI:{' '}
+                    <span style={{ color: getAqiColor(nearestFallback.aqi) }}>{nearestFallback.aqi}</span>
+                  </p>
+                  <p style={{ fontStyle: 'italic', opacity: 0.8 }}>
+                    No community reports yet for your pincode — this is the closest official reading.
+                  </p>
+                </div>
+              </Popup>
+            </CircleMarker>
+          )}
 
           {/* User's pincode marker */}
           <CircleMarker

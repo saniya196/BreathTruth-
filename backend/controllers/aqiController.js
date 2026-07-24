@@ -77,7 +77,28 @@ exports.getCurrentAqi = async (req, res) => {
     const aggregate = await AqiAggregate.findOne({ pincode, date: { $gte: today } });
     const latest = aggregate || await AqiAggregate.findOne({ pincode }).sort({ date: -1 });
 
-    if (!latest) return res.json({ aqi: null, category: 'unknown', advisory: getAdvisory(null) });
+    if (!latest) {
+      // No community reports yet for this pincode, so fall back to the nearest
+      // official station instead of showing an empty state.
+      const nearest = await fetchOfficialAqiWithFallback({ pincode });
+      console.log('DEBUG nearest fallback result:', nearest);
+      if (!nearest?.aqi) {
+        return res.json({ aqi: null, category: 'unknown', advisory: getAdvisory(null) });
+      }
+
+      return res.json({
+        aqi: nearest.aqi,
+        communityAqi: null,
+        officialAqi: nearest.aqi,
+        officialStation: nearest.station,
+        isNearestFallback: true,
+        category: getCategory(nearest.aqi),
+        advisory: getAdvisory(nearest.aqi),
+        confidenceScore: null,
+        anomalyFlagged: false,
+        divergenceRatio: null
+      });
+    }
 
     let officialAqi = latest.officialAqi;
     let officialStation = latest.officialStation;

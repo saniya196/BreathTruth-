@@ -3,6 +3,8 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
+const User = require('../models/User');
+const Report = require('../models/Report');
 const { nominatimGet } = require('../utils/nominatim');
 const { geocodeArea, geocodeByPincode, haversineDistanceMeters } = require('../utils/geocode');
 
@@ -206,6 +208,32 @@ router.get('/zones', async (req, res) => {
     res.json({ zones });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });
+  }
+});
+
+// Public platform stats for the landing page — real numbers, not placeholders.
+router.get('/stats', async (req, res) => {
+  try {
+    const [userCount, reportCount, cityList, divergenceAgg] = await Promise.all([
+      User.countDocuments(),
+      Report.countDocuments(),
+      AqiAggregate.distinct('city'),
+      AqiAggregate.aggregate([
+        { $match: { divergenceRatio: { $gt: 0 } } },
+        { $group: { _id: null, avgDivergence: { $avg: '$divergenceRatio' } } }
+      ])
+    ]);
+
+    res.json({
+      citiesMonitored: cityList.filter(Boolean).length,
+      reportsSubmitted: reportCount,
+      usersContributing: userCount,
+      avgDivergence: divergenceAgg[0]?.avgDivergence
+        ? Number(divergenceAgg[0].avgDivergence.toFixed(1))
+        : null
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching stats', error: err.message });
   }
 });
 

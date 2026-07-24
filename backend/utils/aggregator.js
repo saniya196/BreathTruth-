@@ -2,6 +2,7 @@ const Report = require('../models/Report');
 const AqiAggregate = require('../models/AqiAggregate');
 const { fetchOfficialAqiWithFallback } = require('./officialAqi');
 const { nominatimGet } = require('./nominatim');
+const { getIO } = require('./socketManager');
 
 // Confidence scoring logic:
 // Low: < 3 reports or high variance
@@ -141,11 +142,26 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
     aggregateData.anomalyFlagged = aggregateData.divergenceRatio >= 2.0;
   }
 
-  return AqiAggregate.findOneAndUpdate(
+  const updated = await AqiAggregate.findOneAndUpdate(
     { pincode, date: startOfDay },
     aggregateData,
     { upsert: true, new: true }
   );
+
+  try {
+    getIO().to(String(pincode)).emit('aqi:update', {
+      pincode,
+      communityAqi: updated.communityAqi,
+      officialAqi: updated.officialAqi,
+      confidenceScore: updated.confidenceScore,
+      anomalyFlagged: updated.anomalyFlagged,
+      reportCount: updated.reportCount
+    });
+  } catch (e) {
+    // Socket layer not initialized (e.g. running a standalone script) — non-fatal.
+  }
+
+  return updated;
 };
 
 exports.updateConfidenceScores = async () => {

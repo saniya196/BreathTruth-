@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import { socket } from '../utils/socket';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -13,6 +14,17 @@ export default function Navbar() {
   useEffect(() => {
     if (user) fetchUnreadCount();
   }, [user, location]);
+
+  useEffect(() => {
+    if (!user?.pincode) return;
+    socket.emit('join', user.pincode);
+    const bump = () => fetchUnreadCount();
+    socket.on('alert:threshold', bump);
+    return () => {
+      socket.emit('leave', user.pincode);
+      socket.off('alert:threshold', bump);
+    };
+  }, [user]);
 
   const fetchUnreadCount = async () => {
     try {

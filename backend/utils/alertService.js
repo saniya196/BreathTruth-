@@ -2,6 +2,7 @@ const { Resend } = require("resend");
 const User = require("../models/User");
 const Alert = require("../models/Alert");
 const AqiAggregate = require("../models/AqiAggregate");
+const { getIO } = require("./socketManager");
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -44,6 +45,19 @@ exports.sendThresholdAlerts = async () => {
       aqiAtAlert: currentAqi,
       threshold: user.alertThreshold,
     });
+
+    try {
+      getIO().to(String(user.pincode)).emit('alert:threshold', {
+        pincode: user.pincode,
+        locality: user.locality,
+        aqi: currentAqi,
+        threshold: user.alertThreshold,
+        title,
+        message
+      });
+    } catch (e) {
+      // non-fatal
+    }
 
     // Send email if enabled
     if (user.alertEmail) {

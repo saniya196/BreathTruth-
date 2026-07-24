@@ -168,6 +168,13 @@ router.get('/nearest/:pincode', async (req, res) => {
 	}
 });
 
+// Temporary debug route for verifying live alert broadcasts.
+router.get('/debug/trigger-alerts', async (req, res) => {
+	const { sendThresholdAlerts } = require('../utils/alertService');
+	await sendThresholdAlerts();
+	res.json({ triggered: true });
+});
+
 // Returns schools, hospitals, colleges, old-age homes near that pincode.
 router.get('/institutions/:pincode', async (req, res) => {
 	try {

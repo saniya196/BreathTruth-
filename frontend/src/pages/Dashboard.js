@@ -4,6 +4,9 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 import { AqiGauge, ConfidenceBadge, AnomalyBanner, HealthAdvisory, AqiComparisonBar } from '../components/Dashboard/AqiCard';
+import { socket } from '../utils/socket';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
+import { format } from 'date-fns';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -11,6 +14,8 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [nearestStation, setNearestStation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [liveHistory, setLiveHistory] = useState([]);
+  const [liveFeed, setLiveFeed] = useState([]);
 
   const handleExportCSV = async () => {
     try {
@@ -30,6 +35,45 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (user?.pincode) fetchData();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.pincode) return;
+
+    const joinRoom = () => socket.emit('join', user.pincode);
+    joinRoom();
+    socket.on('connect', joinRoom);
+
+    const onAqiUpdate = () => {
+      fetchData();
+      toast.info('AQI data just updated for your area');
+      setLiveHistory(prev => [
+        ...prev.slice(-19),
+        { time: format(new Date(), 'HH:mm:ss'), aqi: aqiData?.communityAqi ?? 0 }
+      ]);
+    };
+    const onNewReport = (data) => {
+      if (data.reporterName !== user.name) {
+        toast.success(`New report from ${data.locality}: AQI ~${data.aqiEstimate}`);
+      }
+      fetchData();
+      setLiveFeed(prev => [data, ...prev].slice(0, 8));
+    };
+    const onAlert = (data) => {
+      toast.warn(data.message);
+    };
+
+    socket.on('aqi:update', onAqiUpdate);
+    socket.on('report:new', onNewReport);
+    socket.on('alert:threshold', onAlert);
+
+    return () => {
+      socket.emit('leave', user.pincode);
+      socket.off('connect', joinRoom);
+      socket.off('aqi:update', onAqiUpdate);
+      socket.off('report:new', onNewReport);
+      socket.off('alert:threshold', onAlert);
+    };
   }, [user]);
 
   const fetchData = async () => {
@@ -151,6 +195,45 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {liveHistory.length > 1 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3 className="card-title">Live AQI (this session)</h3>
+          <ResponsiveContainer width="100%" height={140}>
+            <AreaChart data={liveHistory}>
+              <defs>
+                <linearGradient id="liveGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+              <YAxis domain={[0, 500]} tick={{ fontSize: 10 }} width={30} />
+              <Tooltip />
+              <Area type="monotone" dataKey="aqi" stroke="#ef4444" fill="url(#liveGrad)" strokeWidth={2} isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {liveFeed.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3 className="card-title">Live Activity</h3>
+          <div className="alerts-list">
+            {liveFeed.map((r, i) => (
+              <div key={i} className="alert-item">
+                <div className="alert-body">
+                  <div className="alert-header-row">
+                    <strong className="alert-title">{r.reporterName || 'A neighbour'} reported AQI ~{r.aqiEstimate}</strong>
+                    <span className="alert-time">{format(new Date(r.timestamp), 'HH:mm:ss')}</span>
+                  </div>
+                  <p className="alert-message">{r.locality} · source: {r.pollutionSource}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats row */}
       {summary && (

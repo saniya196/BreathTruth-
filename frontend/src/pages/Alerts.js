@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 import { getAqiColor } from '../utils/aqiHelpers';
 import { format } from 'date-fns';
+import { socket } from '../utils/socket';
 
 export default function Alerts() {
   const { user } = useAuth();
@@ -16,6 +17,17 @@ export default function Alerts() {
       return;
     }
     fetchAlerts();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.pincode) return;
+    socket.emit('join', user.pincode);
+    const refresh = () => fetchAlerts();
+    socket.on('alert:threshold', refresh);
+    return () => {
+      socket.emit('leave', user.pincode);
+      socket.off('alert:threshold', refresh);
+    };
   }, [user]);
 
   const fetchAlerts = async () => {

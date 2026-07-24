@@ -41,6 +41,26 @@ async function geocodeQuery(query) {
 
 async function resolveAreaCoordinates(location = {}) {
   const { pincode, locality, city } = location;
+
+  // Structured postal code lookup is far more reliable than free-text search
+  // for Indian pincodes, especially smaller towns — try this first.
+  if (pincode) {
+    try {
+      const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
+        params: { postalcode: pincode, country: 'India', format: 'jsonv2', limit: 1 },
+        headers: { 'User-Agent': 'BreathTruth/1.0 (waqi-official-aqi)' },
+        timeout: 12000
+      });
+      if (Array.isArray(data) && data.length > 0) {
+        const hit = { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+        console.log('DEBUG structured geocode hit:', hit); // temporary
+        return hit;
+      }
+    } catch (err) {
+      console.log('DEBUG structured geocode failed:', err.message); // temporary
+    }
+  }
+
   const queries = [
     `${pincode || ''} ${locality || ''} ${city || ''} India`.trim(),
     `${locality || ''} ${city || ''} India`.trim(),
@@ -102,6 +122,7 @@ async function fetchWaqiAqi(location = {}, fallbackCity = null) {
 
   const url = `https://api.waqi.info/feed/geo:${geocodeCity.lat};${geocodeCity.lng}/?token=${WAQI_TOKEN}`;
   const { data } = await axios.get(url, { timeout: 12000 });
+  console.log('DEBUG WAQI raw response:', JSON.stringify(data)); // temporary
 
   if (data?.status !== 'ok' || !data?.data) return null;
   return buildWaqiResult(data.data, geocodeCity);

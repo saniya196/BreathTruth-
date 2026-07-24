@@ -84,6 +84,12 @@ export default function PublicDashboard() {
               {searchResult.aqi ?? '—'}
             </span>
           </div>
+          {searchResult.isNearestFallback && (
+            <p className="public-search-advisory" style={{ fontStyle: 'italic', opacity: 0.8 }}>
+              No community reports yet for this pincode — showing the nearest official station
+              {searchResult.officialStation ? ` (${searchResult.officialStation})` : ''} instead.
+            </p>
+          )}
           <div className="zone-category" style={{ color: getAqiColor(searchResult.aqi) }}>
             {formatAqiLabel(searchResult.aqi)}
           </div>

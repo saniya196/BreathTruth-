@@ -1,9 +1,12 @@
+require('dns').setServers(['8.8.8.8', '1.1.1.1']);
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
+const http = require('http');
+const { init: initSocket } = require('./utils/socketManager');
 
 require('dotenv').config();
 
@@ -35,6 +38,9 @@ const isAllowedOrigin = (origin) => {
 
   return false;
 };
+
+// Placed here (after isAllowedOrigin is defined, before routes) so both
+// Express CORS and Socket.io CORS share the exact same origin check.
 
 // Middleware
 app.use(helmet());
@@ -130,5 +136,8 @@ cron.schedule('*/30 * * * *', async () => {
   }
 });
 
+const server = http.createServer(app);
+initSocket(server, isAllowedOrigin);
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 BreathTruth server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 BreathTruth server running on port ${PORT}`));

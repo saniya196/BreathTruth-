@@ -2,7 +2,7 @@
 
 A community-driven urban air quality monitoring and civic accountability platform. BreathTruth lets citizens report local air quality conditions, cross-checks community-reported data against official government-linked readings, flags anomalies, and generates ready-to-file civic complaint documents.
 
-**Live app:** [https://breathtruth.vercel.app](https://breathtruth.vercel.app)
+**Live app:** [https://breath-truth-frontend.vercel.app](https://breath-truth-frontend.vercel.app)
 
 ---
 
@@ -45,10 +45,13 @@ A few implementation details worth calling out, since they reflect real producti
 - **Multi-endpoint Overpass fallback** — public Overpass API mirrors are frequently overloaded, so institution lookups fall back across three separate Overpass instances, each attempted with two different request encodings, before failing.
 - **Environment-gated debug routes** — diagnostic endpoints (e.g. CORS configuration inspection) are only exposed when `NODE_ENV !== production`.
 - **Dynamic CORS validation** — origin checking allows configured domains, localhost during development, and any `*.vercel.app` preview deployment, rather than a single hardcoded origin.
+- **Cold-start prevention** — Render's free tier spins down the backend after 15 minutes of inactivity, causing a 20-50s delay on the next request (and in one case, a failed first request during a live demo). An UptimeRobot monitor now pings `/api/health` every 5 minutes to keep the service warm. The `/api/health` endpoint is a lightweight liveness check with no DB dependency, so pings stay fast and cheap.
 
 ## Project Structure
 
-```text
+text
+
+```
 breathtruth-fullstack/
 ├── package.json
 ├── package-lock.json
@@ -107,7 +110,9 @@ breathtruth-fullstack/
 
 ### 1. Install dependencies (from repository root)
 
-```bash
+bash
+
+```
 npm install
 ```
 
@@ -115,14 +120,18 @@ npm install
 
 Backend:
 
-```bash
+bash
+
+```
 cd backend
 cp .env.example .env
 ```
 
 Frontend:
 
-```bash
+bash
+
+```
 cd ../frontend
 cp .env.example .env
 ```
@@ -133,7 +142,9 @@ cp .env.example .env
 
 From the repository root:
 
-```bash
+bash
+
+```
 npm run dev
 ```
 
@@ -142,7 +153,9 @@ npm run dev
 
 Or run each independently:
 
-```bash
+bash
+
+```
 npm run dev:backend
 npm run dev:frontend
 ```
@@ -151,7 +164,9 @@ npm run dev:frontend
 
 ### backend/.env
 
-```env
+env
+
+```
 PORT=5000
 MONGO_URI=mongodb://localhost:27017/breathtruth
 
@@ -173,13 +188,17 @@ WAQI_TOKEN=demo
 
 ### frontend/.env
 
-```env
+env
+
+```
 REACT_APP_API_URL=http://localhost:5000
 ```
 
 ## Root Scripts
 
-```bash
+bash
+
+```
 npm run dev            # backend + frontend concurrently
 npm run dev:backend
 npm run dev:frontend
@@ -194,64 +213,38 @@ npm run clean
 
 ### Authentication
 
-| Method | Endpoint | Auth required | Description |
-|---|---|---|---|
-| POST | `/api/auth/register` | No | Register a new user |
-| POST | `/api/auth/login` | No | Log in and receive a JWT |
-| GET | `/api/auth/me` | Yes | Get current user profile |
-| PUT | `/api/auth/settings` | Yes | Update alert preferences |
+MethodEndpointAuth requiredDescriptionPOST`/api/auth/register`NoRegister a new userPOST`/api/auth/login`NoLog in and receive a JWTGET`/api/auth/me`YesGet current user profilePUT`/api/auth/settings`YesUpdate alert preferences
 
 ### AQI
 
-| Method | Endpoint | Auth required | Description |
-|---|---|---|---|
-| GET | `/api/aqi/official?city=` | No | Fetch official AQI for a city |
-| GET | `/api/aqi/current/:pincode` | No | Current AQI (community + official) for a pincode |
-| GET | `/api/aqi/nearest/:pincode` | No | Nearest official station for a pincode via WAQI |
-| GET | `/api/aqi/comparison/:pincode` | Yes | Historical community vs. official AQI comparison |
+MethodEndpointAuth requiredDescriptionGET`/api/aqi/official?city=`NoFetch official AQI for a cityGET`/api/aqi/current/:pincode`NoCurrent AQI (community + official) for a pincodeGET`/api/aqi/nearest/:pincode`NoNearest official station for a pincode via WAQIGET`/api/aqi/comparison/:pincode`YesHistorical community vs. official AQI comparison
 
 ### Reports
 
-| Method | Endpoint | Auth required | Description |
-|---|---|---|---|
-| POST | `/api/reports` | Yes | Submit an AQI or symptom-based report |
-| GET | `/api/reports?pincode=` | Yes | Get recent reports for a pincode |
-| GET | `/api/reports/trend/:pincode` | Yes | 7-day AQI trend for a pincode |
-| GET | `/api/reports/summary/:pincode` | No | Latest aggregate summary + civic eligibility status |
-| DELETE | `/api/reports/:id` | Yes | Delete a report (owner or admin only) |
+MethodEndpointAuth requiredDescriptionPOST`/api/reports`YesSubmit an AQI or symptom-based reportGET`/api/reports?pincode=`YesGet recent reports for a pincodeGET`/api/reports/trend/:pincode`Yes7-day AQI trend for a pincodeGET`/api/reports/summary/:pincode`NoLatest aggregate summary + civic eligibility statusDELETE`/api/reports/:id`YesDelete a report (owner or admin only)
 
 ### Alerts
 
-| Method | Endpoint | Auth required | Description |
-|---|---|---|---|
-| GET | `/api/alerts` | Yes | Get in-app alerts for current user |
-| PUT | `/api/alerts/:id/read` | Yes | Mark an alert as read |
+MethodEndpointAuth requiredDescriptionGET`/api/alerts`YesGet in-app alerts for current userPUT`/api/alerts/:id/read`YesMark an alert as read
 
 ### Map
 
-| Method | Endpoint | Auth required | Description |
-|---|---|---|---|
-| GET | `/api/map/zones?pincode=` | No | Today's AQI overlay data by zone |
-| GET | `/api/map/institutions/:pincode` | No | Nearby schools, hospitals, colleges, and care homes |
+MethodEndpointAuth requiredDescriptionGET`/api/map/zones?pincode=`NoToday's AQI overlay data by zoneGET`/api/map/institutions/:pincode`NoNearby schools, hospitals, colleges, and care homes
 
 ### Civic Action
 
-| Method | Endpoint | Auth required | Description |
-|---|---|---|---|
-| GET | `/api/civic/complaint-pdf/:pincode` | Yes | Generate a formatted complaint PDF (requires 11+ unique reporters in the last 7 days) |
-| POST | `/api/civic/escalate` | Yes | Log an escalation event |
+MethodEndpointAuth requiredDescriptionGET`/api/civic/complaint-pdf/:pincode`YesGenerate a formatted complaint PDF (requires 11+ unique reporters in the last 7 days)POST`/api/civic/escalate`YesLog an escalation event
 
 ### Export
 
-| Method | Endpoint | Auth required | Description |
-|---|---|---|---|
-| GET | `/api/export/csv?pincode=` | Yes | Export daily aggregate data as CSV |
+MethodEndpointAuth requiredDescriptionGET`/api/export/csv?pincode=`YesExport daily aggregate data as CSV
 
 ## Deployment
 
 - **Frontend:** Vercel (auto-deploys from GitHub)
 - **Backend API:** Render
 - **Database:** MongoDB Atlas
+- **Uptime monitoring:** UptimeRobot pings `/api/health` every 5 minutes to prevent Render free-tier cold starts from causing failed requests on first visit.
 
 Before deploying:
 
@@ -261,7 +254,7 @@ Before deploying:
 - Build the frontend with `npm run build`.
 - Never commit real credentials or `.env` files.
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment instructions.
+See DEPLOYMENT.md for full deployment instructions.
 
 ## Security Notes
 
@@ -273,7 +266,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment instructions.
 
 ## Additional Documentation
 
-See the [`docs/`](docs/) directory for setup checklists, optimization notes, and folder structure reference.
+See the `docs/` directory for setup checklists, optimization notes, and folder structure reference.
 
 ## License
 

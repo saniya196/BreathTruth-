@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 
 const FEATURES = [
   { icon: '📊', title: 'Community AQI Reports', desc: 'Citizens submit hyperlocal air quality readings, creating a ground-truth data layer beyond sparse government sensors.' },
@@ -10,14 +11,20 @@ const FEATURES = [
   { icon: '📢', title: 'Civic Complaint Generator', desc: 'Auto-generate a formal PDF complaint letter backed by 7-day community data. Hold authorities accountable.' },
 ];
 
-const STATS = [
-  { value: '1000+', label: 'Cities Monitored' },
-  { value: '50K+', label: 'Reports Submitted' },
-  { value: '2.4x', label: 'Avg. Data Divergence' },
-  { value: '100%', label: 'Open Data' },
-];
-
 export default function Landing() {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    axios.get('/api/map/stats').then(({ data }) => setStats(data)).catch(() => setStats(null));
+  }, []);
+
+  const displayStats = [
+    { value: stats ? stats.citiesMonitored : '—', label: 'Cities Monitored' },
+    { value: stats ? stats.reportsSubmitted : '—', label: 'Reports Submitted' },
+    { value: stats?.avgDivergence ? `${stats.avgDivergence}x` : '—', label: 'Avg. Data Divergence' },
+    { value: stats ? stats.usersContributing : '—', label: 'Contributors' },
+  ];
+
   return (
     <div className="landing-page">
       {/* Hero */}
@@ -55,7 +62,7 @@ export default function Landing() {
 
       {/* Stats bar */}
       <section className="stats-bar">
-        {STATS.map((s, i) => (
+        {displayStats.map((s, i) => (
           <div key={i} className="stat-item">
             <span className="stat-big">{s.value}</span>
             <span className="stat-tiny">{s.label}</span>
