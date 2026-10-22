@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getOfficialAqi, getComparison, getCurrentAqi } = require('../controllers/aqiController');
+const { fetchNearestOfficialAqi } = require('../utils/officialAqi');
 const { protect } = require('../middleware/auth');
 const axios = require('axios');
 
@@ -137,30 +138,23 @@ router.get('/comparison/:pincode', protect, getComparison);
 
 // Used when comparison graph has no local sensor for that pincode.
 router.get('/nearest/:pincode', async (req, res) => {
+	const diag = {};
 	try {
 		const { pincode } = req.params;
-		const { lat, lon } = await geocodePincode(pincode);
-
-		const waqiToken = process.env.WAQI_TOKEN;
-		if (!waqiToken) return res.status(503).json({ error: 'Official AQI is not configured', reason: 'missing_token' });
-		const { data } = await axios.get(`https://api.waqi.info/feed/geo:${lat};${lon}/`, { params: { token: waqiToken }, timeout: 12000 });
-
-		if (data.status !== 'ok') {
-			return res.status(404).json({ error: 'No nearby station found' });
+		const station = await fetchNearestOfficialAqi({ pincode }, null, diag);
+		if (!station) {
+			return res.status(404).json({ error: 'No verified nearby station found', reason: diag.reason || 'unknown' });
 		}
-
-		const station = data.data;
 		res.json({
 			isNearest: true,
-			stationName: station.city?.name || 'Nearest station',
+			stationName: station.station,
 			aqi: station.aqi,
-			pm25: station.iaqi?.pm25?.v ?? null,
-			pm10: station.iaqi?.pm10?.v ?? null,
-			dominentPol: station.dominentpol,
-			stationLat: station.city?.geo?.[0] ?? lat,
-			stationLon: station.city?.geo?.[1] ?? lon,
-			queryLat: lat,
-			queryLon: lon,
+			pm25: station.stations[0]?.pollutants.find(p => p.pollutant === 'pm25')?.value ?? null,
+			pm10: station.stations[0]?.pollutants.find(p => p.pollutant === 'pm10')?.value ?? null,
+			stationLat: station.nearestStation.coords.lat,
+			stationLon: station.nearestStation.coords.lng,
+			queryLat: station.targetCoordinates.lat,
+			queryLon: station.targetCoordinates.lng,
 		});
 	} catch (err) {
 		console.error('[nearest]', err.message);

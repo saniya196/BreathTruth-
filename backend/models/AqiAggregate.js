@@ -27,6 +27,9 @@ const aqiAggregateSchema = new mongoose.Schema({
   // Official government data
   officialAqi: { type: Number },
   officialStation: { type: String },
+  officialStationLat: { type: Number },
+  officialStationLng: { type: Number },
+  officialStationValidated: { type: Boolean, default: false },
   officialDataFetched: { type: Boolean, default: false },
   // Divergence analysis
   divergenceRatio: { type: Number }, // communityAqi / officialAqi

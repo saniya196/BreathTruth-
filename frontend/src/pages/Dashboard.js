@@ -83,6 +83,8 @@ export default function Dashboard() {
     waqi_unreachable: 'The official AQI service could not be reached.',
     waqi_rejected: 'The official AQI service rejected the request.',
     station_has_no_aqi: 'The nearest station is not reporting an AQI right now.',
+    station_missing_coordinates: 'The station location could not be verified for your area.',
+    station_too_far: 'No verified official station is close enough to represent your area.',
     unknown: 'No official station reading is available for your area right now.'
   };
 

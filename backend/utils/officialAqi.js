@@ -1,4 +1,7 @@
 const axios = require('axios');
+const { haversineDistanceMeters } = require('./geocode');
+
+const MAX_STATION_DISTANCE_METERS = 50_000;
 
 // No silent 'demo' fallback: the demo key only serves a tiny set of stations, which
 // makes the official card show N/A in production with no visible error.
@@ -9,7 +12,8 @@ const getWaqiToken = () => process.env.WAQI_TOKEN || null;
 // (bad token, WAQI down) outranks a data problem (geocoding, offline station).
 const REASON_PRIORITY = {
   missing_token: 5, waqi_rejected: 4, waqi_timeout: 3, waqi_unreachable: 3,
-  station_has_no_aqi: 2, geocode_failed: 1, no_location: 0
+  station_too_far: 2, station_missing_coordinates: 2, station_has_no_aqi: 2,
+  geocode_failed: 1, no_location: 0
 };
 const fail = (diag, reason) => {
   if (diag && (!diag.reason || (REASON_PRIORITY[reason] ?? -1) > (REASON_PRIORITY[diag.reason] ?? -1))) {
@@ -28,6 +32,20 @@ const geocodeCache = new Map();
 
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function validCoordinates(coordinates) {
+  return coordinates
+    && Number.isFinite(coordinates.lat)
+    && Number.isFinite(coordinates.lng)
+    && coordinates.lat >= -90
+    && coordinates.lat <= 90
+    && coordinates.lng >= -180
+    && coordinates.lng <= 180;
+}
+
+function hasValidatedStationCoordinates(result) {
+  return validCoordinates(result?.nearestStation?.coords);
 }
 
 async function geocodeQuery(query) {
@@ -76,7 +94,7 @@ async function resolveAreaCoordinates(location = {}) {
       });
       if (Array.isArray(data) && data.length > 0) {
         const hit = { lat: Number(data[0].lat), lng: Number(data[0].lon) };
-        return hit;
+        if (validCoordinates(hit)) return hit;
       }
     } catch (err) {
       console.warn('[officialAqi] structured geocode failed:', err.message);
@@ -104,8 +122,9 @@ function buildWaqiResult(feedData, targetCoordinates = null) {
   const station = feedData?.city?.name || 'Nearest station';
   const aqi = parseAqi(feedData?.aqi);
   const geo = Array.isArray(feedData?.city?.geo) ? feedData.city.geo : null;
-  const stationLat = geo?.[0] != null ? Number(geo[0]) : targetCoordinates?.lat ?? null;
-  const stationLon = geo?.[1] != null ? Number(geo[1]) : targetCoordinates?.lng ?? null;
+  const stationCoordinates = geo?.length >= 2
+    ? { lat: Number(geo[0]), lng: Number(geo[1]) }
+    : null;
 
   return {
     aqi,
@@ -123,13 +142,13 @@ function buildWaqiResult(feedData, targetCoordinates = null) {
           { pollutant: 'co', value: feedData?.iaqi?.co?.v ?? null },
           { pollutant: 'o3', value: feedData?.iaqi?.o3?.v ?? null }
         ].filter(item => item.value != null),
-        coords: stationLat != null && stationLon != null ? { lat: stationLat, lng: stationLon } : null
+        coords: validCoordinates(stationCoordinates) ? stationCoordinates : null
       }
     ],
     nearestStation: {
       station,
       aqi,
-      coords: stationLat != null && stationLon != null ? { lat: stationLat, lng: stationLon } : null
+      coords: validCoordinates(stationCoordinates) ? stationCoordinates : null
     },
     targetCoordinates
   };
@@ -146,7 +165,7 @@ async function fetchWaqiAqi(location = {}, fallbackCity = null, diag = null) {
   const cityName = location.city || fallbackCity || location.locality || location.pincode || '';
   const geocodeCity = target || (await resolveAreaCoordinates({ city: cityName }));
 
-  if (!geocodeCity) return fail(diag, 'geocode_failed');
+  if (!validCoordinates(geocodeCity)) return fail(diag, 'geocode_failed');
 
   let data;
   try {
@@ -166,6 +185,18 @@ async function fetchWaqiAqi(location = {}, fallbackCity = null, diag = null) {
   }
 
   const result = buildWaqiResult(data.data, geocodeCity);
+  const stationCoordinates = result.nearestStation.coords;
+  if (!hasValidatedStationCoordinates(result)) return fail(diag, 'station_missing_coordinates');
+  const distanceMeters = haversineDistanceMeters(
+    geocodeCity.lat,
+    geocodeCity.lng,
+    stationCoordinates.lat,
+    stationCoordinates.lng
+  );
+  if (distanceMeters > MAX_STATION_DISTANCE_METERS) {
+    console.warn('[officialAqi] station is outside local coverage: %s km', (distanceMeters / 1000).toFixed(1));
+    return fail(diag, 'station_too_far');
+  }
   if (result.aqi == null) return fail(diag, 'station_has_no_aqi'); // WAQI sends aqi: "-" when a station is offline
   return result;
 }
@@ -179,6 +210,9 @@ async function fetchNearestOfficialAqi(location = {}, fallbackCity = null, diag 
   const target = await resolveAreaCoordinates(location);
   const city = location.city || fallbackCity || null;
 
+  if (!target && (location.pincode || location.locality)) {
+    return fail(diag, 'geocode_failed');
+  }
   if (!target && !city) {
     // We had something to look up (e.g. a pincode) but could not resolve it, which is a
     // geocoding failure; 'no_location' is only for requests that carried no location at all.
@@ -204,4 +238,10 @@ async function fetchOfficialAqiWithFallback(locationOrCity, fallbackCity = null,
   return secondary;
 }
 
-module.exports = { fetchOfficialAqi, fetchOfficialAqiWithFallback, fetchNearestOfficialAqi };
+module.exports = {
+  fetchOfficialAqi,
+  fetchOfficialAqiWithFallback,
+  fetchNearestOfficialAqi,
+  MAX_STATION_DISTANCE_METERS,
+  hasValidatedStationCoordinates
+};
