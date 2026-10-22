@@ -134,6 +134,9 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
     sourcesBreakdown,
     officialAqi: official?.aqi ?? null,
     officialStation: official?.station || null,
+    officialStationLat: official?.nearestStation?.coords?.lat ?? null,
+    officialStationLng: official?.nearestStation?.coords?.lng ?? null,
+    officialStationValidated: official?.aqi != null && !!official?.nearestStation?.coords,
     officialDataFetched: official?.aqi != null
   };
 

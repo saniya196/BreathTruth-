@@ -1,7 +1,7 @@
 const Report = require('../models/Report');
 const AqiAggregate = require('../models/AqiAggregate');
 const { recalculateAggregate } = require('../utils/aggregator');
-const { fetchOfficialAqiWithFallback } = require('../utils/officialAqi');
+const { fetchOfficialAqiWithFallback, hasValidatedStationCoordinates } = require('../utils/officialAqi');
 const { geocodeByPincode, haversineDistanceMeters } = require('../utils/geocode');
 const { getIO } = require('../utils/socketManager');
 
@@ -128,15 +128,20 @@ exports.getWeeklyTrend = async (req, res) => {
 
     // Backfill missing official AQI values so trend graph can always render government series.
     await Promise.all(aggregates.map(async (agg) => {
-      if (!agg.officialAqi && agg.city) {
+      if (agg.officialAqi == null && agg.city) {
         const official = await fetchOfficialAqiWithFallback({
           city: agg.city,
           pincode: agg.pincode,
           locality: agg.locality
         });
-        if (official?.aqi) {
+        const officialIsValidated = Number.isFinite(official?.aqi)
+          && hasValidatedStationCoordinates(official);
+        if (officialIsValidated) {
           agg.officialAqi = official.aqi;
           agg.officialStation = official.station;
+          agg.officialStationLat = official.nearestStation?.coords?.lat ?? null;
+          agg.officialStationLng = official.nearestStation?.coords?.lng ?? null;
+          agg.officialStationValidated = true;
           agg.officialDataFetched = true;
           if (agg.communityAqi) {
             agg.divergenceRatio = agg.communityAqi / official.aqi;

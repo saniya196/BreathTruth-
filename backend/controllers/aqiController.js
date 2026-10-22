@@ -1,6 +1,6 @@
 const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
-const { fetchOfficialAqiWithFallback } = require('../utils/officialAqi');
+const { fetchOfficialAqiWithFallback, hasValidatedStationCoordinates } = require('../utils/officialAqi');
 
 // Official AQI via WAQI. Never returns invented readings: when unavailable the
 // response says so and includes a machine-readable reason.
@@ -96,25 +96,42 @@ exports.getCurrentAqi = async (req, res) => {
 
     let officialAqi = latest.officialAqi;
     let officialStation = latest.officialStation;
+    let officialStationLat = latest.officialStationLat;
+    let officialStationLng = latest.officialStationLng;
+    const hasValidatedOfficialStation = latest.officialStationValidated === true;
 
-    if (officialAqi == null) {
+    // Legacy aggregates do not have station validation metadata. Refresh them
+    // before exposing their stored official reading as local.
+    if (officialAqi == null || !hasValidatedOfficialStation) {
       const official = await fetchOfficialAqiWithFallback({
         city: latest.city,
         pincode: latest.pincode,
         locality: latest.locality
       }, null, diag);
-      if (official?.aqi != null) {
+      const officialIsValidated = Number.isFinite(official?.aqi)
+        && hasValidatedStationCoordinates(official);
+      if (officialIsValidated) {
         officialAqi = official.aqi;
         officialStation = official.station;
+        officialStationLat = official.nearestStation?.coords?.lat ?? null;
+        officialStationLng = official.nearestStation?.coords?.lng ?? null;
         await AqiAggregate.findByIdAndUpdate(latest._id, {
           officialAqi,
           officialStation,
+          officialStationLat,
+          officialStationLng,
+          officialStationValidated: true,
           officialDataFetched: true,
           ...(latest.communityAqi != null && officialAqi > 0 ? {
             divergenceRatio: latest.communityAqi / officialAqi,
             anomalyFlagged: latest.communityAqi / officialAqi >= 2.0
           } : {})
         });
+      } else {
+        // Do not expose an unvalidated legacy reading as a local official
+        // value, but retain any valid community reading.
+        officialAqi = null;
+        officialStation = null;
       }
     }
 
