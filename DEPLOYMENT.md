@@ -40,7 +40,7 @@ This guide walks you through deploying BreathTruth to production with free-tier 
      MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/breathtruth?retryWrites=true&w=majority
      JWT_SECRET=<generate random: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
      NODE_ENV=production
-     CLIENT_URL=https://your-frontend-url.vercel.app
+     CLIENT_URL=https://breath-truth-frontend.vercel.app
      EMAIL_HOST=smtp.gmail.com
      EMAIL_PORT=587
      EMAIL_USER=your_email@gmail.com
@@ -77,7 +77,7 @@ This guide walks you through deploying BreathTruth to production with free-tier 
 5. Environment Variables:
    - `REACT_APP_API_URL=https://your-backend-url-from-step-2.railway.app`
 6. Deploy
-7. Get your frontend URL (e.g., `https://breathtruth.vercel.app`)
+7. The production frontend URL is `https://breath-truth-frontend.vercel.app`
 
 ---
 
@@ -85,7 +85,7 @@ This guide walks you through deploying BreathTruth to production with free-tier 
 
 1. Go back to Render (or Railway)
 2. Update environment variable:
-   - `CLIENT_URL=https://breathtruth.vercel.app` (your actual Vercel URL)
+   - `CLIENT_URL=https://breath-truth-frontend.vercel.app`
 3. Redeploy
 4. Wait for deployment to complete
 
@@ -98,9 +98,9 @@ Update your [README.md](README.md) with the deployed link:
 ```markdown
 ## 🚀 Live Demo
 
-**Visit the live app:** [BreathTruth App](https://breathtruth.vercel.app)
+**Visit the live app:** [BreathTruth App](https://breath-truth-frontend.vercel.app)
 
-- **Frontend:** https://breathtruth.vercel.app
+- **Frontend:** https://breath-truth-frontend.vercel.app
 - **Backend API:** https://your-backend.railway.app
 ```
 

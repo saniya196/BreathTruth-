@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
 const http = require('http');
 const { init: initSocket } = require('./utils/socketManager');
+const { createAllowedOrigins, isAllowedOrigin } = require('./utils/cors');
 
 require('dotenv').config();
 
@@ -15,40 +16,24 @@ const app = express();
 // CRA proxy and some hosting layers add X-Forwarded-For; trust first proxy hop.
 app.set('trust proxy', 1);
 
-const normalizeOrigin = (origin) => String(origin || '').trim().replace(/\/+$/, '');
-
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
-  .split(',')
-  .map(origin => normalizeOrigin(origin))
-  .filter(Boolean);
-
-const isAllowedOrigin = (origin) => {
-  const normalized = normalizeOrigin(origin);
-  if (!normalized) return true;
-
-  if (allowedOrigins.includes(normalized)) return true;
-
-  try {
-    const url = new URL(normalized);
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return true;
-    if (url.hostname.endsWith('.vercel.app')) return true;
-  } catch {
-    // Ignore malformed origins and fall through to deny.
-  }
-
-  return false;
-};
+const allowedOrigins = createAllowedOrigins(process.env.CLIENT_URL);
 
 // Placed here (after isAllowedOrigin is defined, before routes) so both
 // Express CORS and Socket.io CORS share the exact same origin check.
 
 // Middleware
 app.use(helmet());
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (origin && !isAllowedOrigin(origin, allowedOrigins)) {
+    return res.status(403).json({ error: 'CORS origin not allowed' });
+  }
+  next();
+});
 app.use(cors({
   origin(origin, callback) {
     // Allow non-browser requests and same-origin calls.
-    if (isAllowedOrigin(origin)) return callback(null, true);
-    return callback(new Error('CORS origin not allowed'));
+    return callback(null, isAllowedOrigin(origin, allowedOrigins));
   },
   credentials: true
 }));
@@ -137,7 +122,7 @@ cron.schedule('*/30 * * * *', async () => {
 });
 
 const server = http.createServer(app);
-initSocket(server, isAllowedOrigin);
+initSocket(server, origin => isAllowedOrigin(origin, allowedOrigins));
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 BreathTruth server running on port ${PORT}`));
