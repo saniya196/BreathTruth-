@@ -4,7 +4,7 @@ import { getAqiColor, getAqiBg, formatAqiLabel, CONFIDENCE_LEVELS } from '../../
 export function AqiGauge({ aqi, label = 'AQI', size = 'lg' }) {
   const color = getAqiColor(aqi);
   const category = formatAqiLabel(aqi);
-  const pct = aqi ? Math.min((aqi / 500) * 100, 100) : 0;
+  const pct = aqi != null ? Math.min((aqi / 500) * 100, 100) : 0;
 
   return (
     <div className={`aqi-gauge aqi-gauge--${size}`} style={{ '--aqi-color': color, '--aqi-pct': `${pct}%` }}>
@@ -22,7 +22,7 @@ export function AqiGauge({ aqi, label = 'AQI', size = 'lg' }) {
           />
         </svg>
         <div className="aqi-gauge__value">
-          <span className="aqi-number">{aqi || '—'}</span>
+          <span className="aqi-number">{aqi ?? '—'}</span>
           <span className="aqi-label">{label}</span>
         </div>
       </div>
@@ -60,7 +60,7 @@ export function AnomalyBanner({ ratio, communityAqi, officialAqi }) {
 }
 
 export function HealthAdvisory({ advisory, aqi }) {
-  if (!advisory || !aqi) return null;
+  if (!advisory || aqi == null) return null;
   const color = getAqiColor(aqi);
 
   return (
@@ -82,7 +82,7 @@ export function HealthAdvisory({ advisory, aqi }) {
 }
 
 export function AqiComparisonBar({ communityAqi, officialAqi, nearestStation = null }) {
-  const maxVal = Math.max(communityAqi || 0, officialAqi || 0, 100);
+  const maxVal = Math.max(communityAqi ?? 0, officialAqi ?? 0, 100);
   return (
     <div>
       <div className="comparison-bars">
@@ -91,20 +91,20 @@ export function AqiComparisonBar({ communityAqi, officialAqi, nearestStation = n
           <div className="bar-track">
             <div
               className="bar-fill bar-fill--community"
-              style={{ width: `${((communityAqi || 0) / maxVal) * 100}%`, background: getAqiColor(communityAqi) }}
+              style={{ width: `${((communityAqi ?? 0) / maxVal) * 100}%`, background: getAqiColor(communityAqi) }}
             />
           </div>
-          <span className="bar-value">{communityAqi || '—'}</span>
+          <span className="bar-value">{communityAqi ?? '—'}</span>
         </div>
         <div className="bar-row">
           <span className="bar-label">Official</span>
           <div className="bar-track">
             <div
               className="bar-fill bar-fill--official"
-              style={{ width: `${((officialAqi || 0) / maxVal) * 100}%`, background: '#94a3b8' }}
+              style={{ width: `${((officialAqi ?? 0) / maxVal) * 100}%`, background: '#94a3b8' }}
             />
           </div>
-          <span className="bar-value">{officialAqi || '—'}</span>
+          <span className="bar-value">{officialAqi ?? '—'}</span>
         </div>
       </div>
       {nearestStation && (

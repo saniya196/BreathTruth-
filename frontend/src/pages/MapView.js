@@ -283,7 +283,7 @@ export default function MapView() {
           {/* AQI Zone circles */}
           {zones.map((zone, i) => {
             const aqi = zone.communityAqi ?? zone.officialAqi;
-            if (!aqi) return null;
+            if (aqi == null) return null;
             return (
               <CircleMarker
                 key={i}
@@ -301,8 +301,8 @@ export default function MapView() {
                 <Popup>
                   <div className="map-popup">
                     <strong>{zone.locality}</strong>
-                    <p>📊 Community AQI: <span style={{ color: getAqiColor(aqi) }}>{zone.communityAqi || '—'}</span></p>
-                    <p>🏛️ Official AQI: {zone.officialAqi || '—'}</p>
+                    <p>📊 Community AQI: <span style={{ color: getAqiColor(aqi) }}>{zone.communityAqi ?? '—'}</span></p>
+                    <p>🏛️ Official AQI: {zone.officialAqi ?? '—'}</p>
                     <p>📋 Status: {formatAqiLabel(aqi)}</p>
                     <p>✅ Confidence: {zone.confidenceScore}</p>
                     {zone.anomalyFlagged && <p>⚠️ Anomaly: Community data diverges from official</p>}

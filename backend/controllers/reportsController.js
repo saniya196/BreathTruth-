@@ -32,7 +32,7 @@ exports.submitReport = async (req, res) => {
 
     // Symptom-to-AQI mapping if no direct measurement
     let finalAqi = aqiEstimate;
-    if (!aqiEstimate && symptoms && symptoms.length > 0) {
+    if (aqiEstimate == null && symptoms && symptoms.length > 0) {
       finalAqi = mapSymptomsToAqi(symptoms);
     }
 

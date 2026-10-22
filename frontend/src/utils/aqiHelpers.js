@@ -16,7 +16,7 @@ export const CONFIDENCE_LEVELS = {
 };
 
 export function getAqiCategory(aqi) {
-  if (!aqi) return 'unknown';
+  if (aqi == null) return 'unknown';
   if (aqi <= 50) return 'good';
   if (aqi <= 100) return 'satisfactory';
   if (aqi <= 200) return 'moderate';

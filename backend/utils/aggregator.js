@@ -89,7 +89,7 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
 
   if (reports.length === 0) return null;
 
-  const aqiValues = reports.map(r => r.aqiEstimate).filter(Boolean);
+  const aqiValues = reports.map(r => r.aqiEstimate).filter(v => v != null);
   const avg = Math.round(aqiValues.reduce((a, b) => a + b, 0) / aqiValues.length);
   const sorted = [...aqiValues].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)];
@@ -132,12 +132,12 @@ exports.recalculateAggregate = async (pincode, locality, city, date) => {
     confidenceScore: label,
     confidenceValue: value,
     sourcesBreakdown,
-    officialAqi: official?.aqi || null,
+    officialAqi: official?.aqi ?? null,
     officialStation: official?.station || null,
-    officialDataFetched: Boolean(official?.aqi)
+    officialDataFetched: official?.aqi != null
   };
 
-  if (aggregateData.communityAqi && aggregateData.officialAqi) {
+  if (aggregateData.communityAqi != null && aggregateData.officialAqi > 0) {
     aggregateData.divergenceRatio = aggregateData.communityAqi / aggregateData.officialAqi;
     aggregateData.anomalyFlagged = aggregateData.divergenceRatio >= 2.0;
   }
@@ -176,7 +176,7 @@ exports.updateConfidenceScores = async () => {
   // Check for anomalies and update divergence ratio
   const allToday = await AqiAggregate.find({ date: { $gte: today } });
   for (const agg of allToday) {
-    if (agg.communityAqi && agg.officialAqi) {
+    if (agg.communityAqi != null && agg.officialAqi > 0) {
       const ratio = agg.communityAqi / agg.officialAqi;
       const anomalyFlagged = ratio >= 2.0;
       await AqiAggregate.findByIdAndUpdate(agg._id, { divergenceRatio: ratio, anomalyFlagged });

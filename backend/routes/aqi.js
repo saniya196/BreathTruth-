@@ -141,9 +141,9 @@ router.get('/nearest/:pincode', async (req, res) => {
 		const { pincode } = req.params;
 		const { lat, lon } = await geocodePincode(pincode);
 
-		const waqiToken = process.env.WAQI_TOKEN || 'demo';
-		const url = `https://api.waqi.info/feed/geo:${lat};${lon}/?token=${waqiToken}`;
-		const { data } = await axios.get(url);
+		const waqiToken = process.env.WAQI_TOKEN;
+		if (!waqiToken) return res.status(503).json({ error: 'Official AQI is not configured', reason: 'missing_token' });
+		const { data } = await axios.get(`https://api.waqi.info/feed/geo:${lat};${lon}/`, { params: { token: waqiToken }, timeout: 12000 });
 
 		if (data.status !== 'ok') {
 			return res.status(404).json({ error: 'No nearby station found' });
@@ -164,12 +164,12 @@ router.get('/nearest/:pincode', async (req, res) => {
 		});
 	} catch (err) {
 		console.error('[nearest]', err.message);
-		res.status(500).json({ error: err.message });
+		res.status(500).json({ error: 'Failed to fetch nearest station' });
 	}
 });
 
 // Temporary debug route for verifying live alert broadcasts.
-router.get('/debug/trigger-alerts', async (req, res) => {
+if (process.env.NODE_ENV !== 'production') router.get('/debug/trigger-alerts', async (req, res) => {
 	const { sendThresholdAlerts } = require('../utils/alertService');
 	await sendThresholdAlerts();
 	res.json({ triggered: true });

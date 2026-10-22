@@ -17,8 +17,8 @@ exports.sendThresholdAlerts = async () => {
     const agg = latestAggregates.find((a) => a.pincode === user.pincode);
     if (!agg) continue;
 
-    const currentAqi = agg.communityAqi || agg.officialAqi;
-    if (!currentAqi || currentAqi <= user.alertThreshold) continue;
+    const currentAqi = agg.communityAqi ?? agg.officialAqi;
+    if (currentAqi == null || currentAqi <= user.alertThreshold) continue;
 
     // Check if we already sent an alert for this user+pincode today
     const existingAlert = await Alert.findOne({

@@ -117,7 +117,7 @@ export default function PublicDashboard() {
       ) : (
         <div className="public-zones-grid">
           {zones.map((zone, i) => {
-            const aqi = zone.communityAqi || zone.officialAqi;
+            const aqi = zone.communityAqi ?? zone.officialAqi;
             const color = getAqiColor(aqi);
             return (
               <div key={i} className="zone-card" style={{ borderTop: `4px solid ${color}` }}>
@@ -127,8 +127,8 @@ export default function PublicDashboard() {
                 </div>
                 <div className="zone-category" style={{ color }}>{formatAqiLabel(aqi)}</div>
                 <div className="zone-meta">
-                  <span>Community: {zone.communityAqi || '—'}</span>
-                  <span>Official: {zone.officialAqi || '—'}</span>
+                  <span>Community: {zone.communityAqi ?? '—'}</span>
+                  <span>Official: {zone.officialAqi ?? '—'}</span>
                 </div>
                 {zone.anomalyFlagged && (
                   <div className="zone-anomaly">⚠️ Anomaly — community data diverges from official</div>
