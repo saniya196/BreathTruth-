@@ -134,11 +134,11 @@ export default function CivicAction() {
               <span className="stat-desc">Community Reports (Latest Day)</span>
             </div>
             <div className="civic-stat">
-              <span className="stat-num">{summary.communityAqi || '—'}</span>
+              <span className="stat-num">{summary.communityAqi ?? '—'}</span>
               <span className="stat-desc">Community AQI</span>
             </div>
             <div className="civic-stat">
-              <span className="stat-num">{summary.officialAqi || '—'}</span>
+              <span className="stat-num">{summary.officialAqi ?? '—'}</span>
               <span className="stat-desc">Official AQI</span>
             </div>
             <div className="civic-stat">

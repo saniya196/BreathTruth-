@@ -2,34 +2,27 @@ const axios = require('axios');
 const AqiAggregate = require('../models/AqiAggregate');
 const { fetchOfficialAqiWithFallback } = require('../utils/officialAqi');
 
-// Fetch official AQI from CPCB API
+// Official AQI via WAQI. Never returns invented readings: when unavailable the
+// response says so and includes a machine-readable reason.
 exports.getOfficialAqi = async (req, res) => {
+  const { city, pincode = '', locality = '' } = req.query;
+  const diag = {};
   try {
-    const { city, pincode = '', locality = '' } = req.query;
-    const official = await fetchOfficialAqiWithFallback({ city, pincode, locality });
-
+    const official = await fetchOfficialAqiWithFallback({ city, pincode, locality }, null, diag);
     if (!official) {
-      return res.json({ stations: [], officialAqi: null, source: null, isMock: true });
+      return res.json({ stations: [], officialAqi: null, source: null, officialStatus: 'unavailable', officialReason: diag.reason || 'unknown' });
     }
-
     res.json({
       stations: official.stations,
       officialAqi: official.aqi,
       source: official.source,
       station: official.station,
-      isMock: official.source !== 'WAQI'
+      officialStatus: 'ok',
+      fetchedAt: new Date().toISOString()
     });
   } catch (err) {
-    res.json({
-      stations: getMockOfficialData({
-        city: req.query.city,
-        pincode: req.query.pincode,
-        locality: req.query.locality
-      }),
-      officialAqi: null,
-      source: 'mock',
-      isMock: true
-    });
+    console.error('[getOfficialAqi]', err.message);
+    res.json({ stations: [], officialAqi: null, source: null, officialStatus: 'unavailable', officialReason: 'server_error' });
   }
 };
 
@@ -53,7 +46,7 @@ exports.getComparison = async (req, res) => {
     }));
 
     // Calculate overall divergence stats
-    const withBoth = comparison.filter(c => c.communityAqi && c.officialAqi);
+    const withBoth = comparison.filter(c => c.communityAqi != null && c.officialAqi > 0);
     const avgDivergence = withBoth.length > 0
       ? withBoth.reduce((sum, c) => sum + (c.divergenceRatio || 1), 0) / withBoth.length
       : null;
@@ -72,6 +65,7 @@ exports.getComparison = async (req, res) => {
 exports.getCurrentAqi = async (req, res) => {
   try {
     const { pincode } = req.params;
+    const diag = {};
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const aggregate = await AqiAggregate.findOne({ pincode, date: { $gte: today } });
@@ -80,16 +74,16 @@ exports.getCurrentAqi = async (req, res) => {
     if (!latest) {
       // No community reports yet for this pincode, so fall back to the nearest
       // official station instead of showing an empty state.
-      const nearest = await fetchOfficialAqiWithFallback({ pincode });
-      console.log('DEBUG nearest fallback result:', nearest);
-      if (!nearest?.aqi) {
-        return res.json({ aqi: null, category: 'unknown', advisory: getAdvisory(null) });
+      const nearest = await fetchOfficialAqiWithFallback({ pincode }, null, diag);
+      if (nearest?.aqi == null) {
+        return res.json({ aqi: null, category: 'unknown', advisory: getAdvisory(null), officialStatus: 'unavailable', officialReason: diag.reason || 'unknown' });
       }
 
       return res.json({
         aqi: nearest.aqi,
         communityAqi: null,
         officialAqi: nearest.aqi,
+        officialStatus: 'ok',
         officialStation: nearest.station,
         isNearestFallback: true,
         category: getCategory(nearest.aqi),
@@ -103,20 +97,20 @@ exports.getCurrentAqi = async (req, res) => {
     let officialAqi = latest.officialAqi;
     let officialStation = latest.officialStation;
 
-    if (!officialAqi) {
+    if (officialAqi == null) {
       const official = await fetchOfficialAqiWithFallback({
         city: latest.city,
         pincode: latest.pincode,
         locality: latest.locality
-      });
-      if (official?.aqi) {
+      }, null, diag);
+      if (official?.aqi != null) {
         officialAqi = official.aqi;
         officialStation = official.station;
         await AqiAggregate.findByIdAndUpdate(latest._id, {
           officialAqi,
           officialStation,
           officialDataFetched: true,
-          ...(latest.communityAqi ? {
+          ...(latest.communityAqi != null && officialAqi > 0 ? {
             divergenceRatio: latest.communityAqi / officialAqi,
             anomalyFlagged: latest.communityAqi / officialAqi >= 2.0
           } : {})
@@ -124,12 +118,14 @@ exports.getCurrentAqi = async (req, res) => {
       }
     }
 
-    const aqi = latest.communityAqi || officialAqi;
+    const aqi = latest.communityAqi ?? officialAqi;
     res.json({
       aqi,
       communityAqi: latest.communityAqi,
       officialAqi,
       officialStation,
+      officialStatus: officialAqi != null ? 'ok' : 'unavailable',
+      officialReason: officialAqi != null ? null : (diag.reason || 'unknown'),
       category: getCategory(aqi),
       advisory: getAdvisory(aqi),
       confidenceScore: latest.confidenceScore,
@@ -143,7 +139,7 @@ exports.getCurrentAqi = async (req, res) => {
 
 // India CPCB AQI categories
 function getCategory(aqi) {
-  if (!aqi) return 'unknown';
+  if (aqi == null) return 'unknown';
   if (aqi <= 50) return 'good';
   if (aqi <= 100) return 'satisfactory';
   if (aqi <= 200) return 'moderate';
@@ -153,7 +149,7 @@ function getCategory(aqi) {
 }
 
 function getAdvisory(aqi) {
-  if (!aqi) return { text: 'No data available for your area yet.', precautions: [] };
+  if (aqi == null) return { text: 'No data available for your area yet.', precautions: [] };
   if (aqi <= 50) return {
     text: 'Air quality is Good. Enjoy outdoor activities.',
     precautions: []
@@ -178,15 +174,6 @@ function getAdvisory(aqi) {
     text: 'Air quality is Severe — health emergency conditions. Stay indoors.',
     precautions: ['Do NOT go outdoors', 'Seal windows and doors', 'Use air purifier on max', 'Seek medical attention if breathing difficulty']
   };
-}
-
-function getMockOfficialData(location = {}) {
-  const city = typeof location === 'string' ? location : location.city;
-  const label = city || location.locality || location.pincode || 'Your area';
-  return [
-    { station: `${label} Central`, aqi: 142, pollutant: 'PM2.5', lastUpdated: new Date() },
-    { station: `${label} North`, aqi: 128, pollutant: 'PM10', lastUpdated: new Date() }
-  ];
 }
 
 module.exports.getCategory = getCategory;

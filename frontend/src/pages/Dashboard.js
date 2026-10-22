@@ -76,6 +76,16 @@ export default function Dashboard() {
     };
   }, [user]);
 
+  const OFFICIAL_UNAVAILABLE_TEXT = {
+    missing_token: 'Official AQI is not configured on the server yet.',
+    geocode_failed: 'We could not locate your pincode to find a nearby station.',
+    waqi_timeout: 'The official AQI service timed out. Try again shortly.',
+    waqi_unreachable: 'The official AQI service could not be reached.',
+    waqi_rejected: 'The official AQI service rejected the request.',
+    station_has_no_aqi: 'The nearest station is not reporting an AQI right now.',
+    unknown: 'No official station reading is available for your area right now.'
+  };
+
   const fetchData = async () => {
     try {
       const [aqiRes, summaryRes, comparisonRes] = await Promise.all([
@@ -154,8 +164,11 @@ export default function Dashboard() {
               officialAqi={aqiData?.officialAqi}
             />
           )}
-          {!aqiData?.officialAqi && (
-            <p className="muted-text">No official station data for your pincode yet. <Link to="/report">Help by reporting!</Link></p>
+          {aqiData?.officialAqi == null && (
+            <p className="muted-text" role="status">
+              {OFFICIAL_UNAVAILABLE_TEXT[aqiData?.officialReason] || OFFICIAL_UNAVAILABLE_TEXT.unknown}{' '}
+              <Link to="/report">Help by reporting!</Link>
+            </p>
           )}
         </div>
 
@@ -243,11 +256,11 @@ export default function Dashboard() {
             <span className="stat-label">Reports Today</span>
           </div>
           <div className="stat-card">
-            <span className="stat-value">{summary.communityAqiMin || '—'}</span>
+            <span className="stat-value">{summary.communityAqiMin ?? '—'}</span>
             <span className="stat-label">Daily Min AQI</span>
           </div>
           <div className="stat-card">
-            <span className="stat-value">{summary.communityAqiMax || '—'}</span>
+            <span className="stat-value">{summary.communityAqiMax ?? '—'}</span>
             <span className="stat-label">Daily Max AQI</span>
           </div>
           <div className="stat-card">
